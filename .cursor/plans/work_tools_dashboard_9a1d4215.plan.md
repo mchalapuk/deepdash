@@ -4,7 +4,7 @@ overview: Static-export Next.js 16 dashboard (no server runtime) with Mantine, V
 todos:
   - id: structure-deps
     content: Static export next.config; CSP meta first in root head; MantineProvider; valtio stores; loglevel setLogLevel(warn); math.js; react-clock; flipclock; next/font/local; Intl.supportedValuesOf timeZone for Mantine Autocomplete component; static hosting + HTTP cache + SW; no runtime fetches; Jest setup
-    status: in_progress
+    status: completed
   - id: tool-world-clock
     content: Header overflow-x; react-clock + digital + GMT±n + label; + after last clock; Mantine Autocomplete component on Intl.supportedValuesOf('timeZone'); immediate localStorage + valtio
     status: pending
