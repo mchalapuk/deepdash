@@ -7,7 +7,7 @@ todos:
     status: completed
   - id: tool-world-clock
     content: Header overflow-x; react-clock + digital + GMT±n + label; + after last clock; Mantine Autocomplete component on Intl.supportedValuesOf('timeZone'); immediate localStorage + valtio
-    status: pending
+    status: completed
   - id: tool-pomodoro
     content: 3 Mantine tabs; flipclock; start-pause-resume + skip; Date.now() deltas; phase bg red/green/blue; load Notification + audio unlock; phase-end chime + Notification; daily work counter; valtio + immediate localStorage
     status: pending

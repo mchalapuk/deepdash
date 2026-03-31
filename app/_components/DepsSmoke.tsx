@@ -13,9 +13,11 @@ export function DepsSmoke() {
   const [endsAt] = useState(() => Date.now() + 3 * 60 * 1000);
 
   useEffect(() => {
-    setNow(new Date());
-    setAnalogReady(true);
     const id = window.setInterval(() => setNow(new Date()), 1000);
+    queueMicrotask(() => {
+      setNow(new Date());
+      setAnalogReady(true);
+    });
     return () => clearInterval(id);
   }, []);
 

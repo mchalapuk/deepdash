@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "react-clock/dist/Clock.css";
 
 :root {
   --background: #ffffff;
@@ -21,4 +22,9 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+.react-clock {
+  background: var(--mantine-color-gray-3);
+  border-radius: 10000px;
 }
