@@ -1,3 +1,9 @@
+## React components
+
+For structure, imports, Mantine + Tailwind usage, hooks, and accessibility patterns, follow **[REACT_STYLEGUIDE.md](./REACT_STYLEGUIDE.md)** (based on `app/_components/PomodoroPanel.tsx`).
+
+For client **Valtio** stores (proxy, `useSnapshot`, actions, localStorage, types), follow **[STORE_STYLEGUIDE.md](./STORE_STYLEGUIDE.md)** (based on `app/_stores/pomodoroStore.ts`).
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 

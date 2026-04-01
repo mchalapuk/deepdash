@@ -21,6 +21,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { getColorFromPhase, type PomodoroPhase } from "@/lib/layout";
 import {
   localDayKey,
   pomodoroActions,
@@ -30,7 +31,6 @@ import {
   useIsRunning,
   useIsPaused,
   useTodayWorkMsDisplay,
-  type PomodoroPhase,
 } from "@/app/_stores/pomodoroStore";
 import { FlipClockJsCountdown } from "./FlipClockJsCountdown";
 
@@ -313,8 +313,3 @@ function playPhaseChime(ctx: AudioContext): void {
   }
 }
 
-function getColorFromPhase(phase: PomodoroPhase): string {
-  if (phase === "work") return "red.9";
-  if (phase === "shortBreak") return "green.9";
-  return "blue.9";
-}

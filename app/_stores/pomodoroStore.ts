@@ -1,6 +1,9 @@
 import { proxy, useSnapshot, type Snapshot } from "valtio";
 import { subscribe } from "valtio/vanilla";
+import type { PomodoroPhase } from "@/lib/layout";
 import log from "@/lib/logger";
+
+export type { PomodoroPhase };
 
 const CONFIG_KEY = "worktools.pomodoro.config.v1";
 const LOGS_KEY = "worktools.pomodoro.logs.v1";
@@ -36,8 +39,6 @@ const pomodoroStore = proxy({
    */
   activePhaseRun: null as ActivePhaseRun | null,
 });
-
-export type PomodoroPhase = "work" | "shortBreak" | "longBreak";
 
 /** Persisted: phase length settings only */
 export type PomodoroConfigV1 = {
