@@ -10,7 +10,7 @@ todos:
     status: completed
   - id: tool-pomodoro
     content: 3 Mantine tabs; flipclock; start-pause-resume + skip; Date.now() deltas; phase bg red/green/blue; load Notification + audio unlock; phase-end chime + Notification; daily work counter; valtio + immediate localStorage
-    status: pending
+    status: completed
   - id: tool-daily-todo
     content: Narrow scroll; one key/day; immediate valtio updates + debounced/throttled localStorage + flush on close; checkbox; done dim+strike; fake trailing row + ActionIcon; Input per row; full keyboard spec + focus rules; rollover modal spec
     status: pending
