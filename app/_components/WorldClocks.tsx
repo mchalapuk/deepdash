@@ -39,7 +39,7 @@ const Clock = dynamic(() => import("react-clock"), { ssr: false });
 const CLOCK_SIZE = 110;
 const allowedZones = new Set(getSupportedTimeZones());
 
-export function WorldClockHeader() {
+export function WorldClocks() {
   const m = useWorldClockHeaderMechanics();
 
   return (
@@ -58,7 +58,7 @@ export function WorldClockHeader() {
         gap="md"
         style={{ width: "max-content", paddingBottom: 4 }}
       >
-        {m.envTzReady ? <WorldClockHeaderContent {...m} /> : null}
+        {m.envTzReady ? <WorldClockPanel {...m} /> : null}
       </Group>
     </Box>
   );
@@ -74,7 +74,7 @@ type WorldClockHeaderProps = {
   clocks: readonly WorldClockEntry[];
 };
 
-function WorldClockHeaderContent(m: WorldClockHeaderProps) {
+function WorldClockPanel(m: WorldClockHeaderProps) {
   const { localTz, systemTz, now, visibleUserClocks, implicitZoneSet, clocks } = m;
 
   return (

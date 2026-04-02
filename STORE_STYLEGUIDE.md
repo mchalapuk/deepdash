@@ -60,7 +60,7 @@ These bindings are **constants** (not derived at runtime). Declare them **above*
 **`use*` hooks are the only supported way for React components to read stored data.** Do not read the proxy from components; subscribe through hooks.
 
 - Export **named functions** `useThing(): Snapshot<T>` that call **`useSnapshot(store)`** and return a **primitive, derived value, or narrow slice** so components re-render when that slice changes.
-- Put **derived logic** in the hook body when it is UI-facing (e.g. `useFlipClockEndsAt`, `useTodayWorkMsDisplay`).
+- Put **derived logic** in the hook body when it is UI-facing (e.g. `useSecondsRemaining`, `useTodayWorkMsDisplay`).
 
 ## Actions object
 

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "react-clock/dist/Clock.css";
+@import "@pqina/flip/dist/flip.min.css";
 
 :root {
   --background: #ffffff;
@@ -27,4 +28,19 @@ body {
 .react-clock {
   background: var(--mantine-color-gray-3);
   border-radius: 10000px;
+}
+
+.tick-credits {
+  display: none;
+}
+
+.tick div[data-repeat="true"] {
+  display: flex;
+  flex-wrap: nowrap;
+}
+
+.tick-flip-card, .tick-flip-spacer {
+  width: 76px;
+  max-width: 76px;
+  overflow: hidden;
 }

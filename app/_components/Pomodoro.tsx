@@ -15,42 +15,42 @@ import {
   IconChevronUp,
   IconPlayerSkipForward,
 } from "@tabler/icons-react";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useRef } from "react";
+import dynamic from "next/dynamic";
 import { getColorFromPhase, type PomodoroPhase } from "@/lib/layout";
 import {
   localDayKey,
   pomodoroActions,
   useCurrentPhase,
-  useFlipClockEndsAt,
   useCurrentPhaseExpired,
   useIsRunning,
   useIsPaused,
+  useSecondsRemaining,
   useTodayWorkMsDisplay,
 } from "@/app/_stores/pomodoroStore";
-import { FlipClockJsCountdown } from "./FlipClockJsCountdown";
 
-export function PomodoroPanel() {
+const FlipTimer = dynamic(
+  () => import("./FlipTimer").then((mod) => mod.FlipTimer),
+  { ssr: false },
+);
+
+export function Pomodoro() {
   const [phase, running, paused] = usePomodoroMechanics();
   const todayWork = useTodayWorkMsDisplay();
 
   return (
     <Paper
       py={34}
-      w="484px"
+      w="494px"
       radius="lg"
       style={{
         backgroundColor: "rgba(0, 0, 0, 0.2)",
         boxShadow: "inset 0 0 10px 0 rgba(10, 0, 0, 0.4), inset 0 0 2px 0 rgba(0, 0, 0, 0.8)",
       }}
     >
-      <Stack gap="xl" align="center">
+      <Stack gap={32} align="center">
         <TabPanel {...{ phase, running }}/>
-        <Countdown {...{ running, paused }}/>
+        <Countdown {...{ running }}/>
         <PrimaryButton {...{ phase, running, paused }}/>
 
         <Text size="sm" c="dimmed" ta="center">
@@ -68,7 +68,7 @@ function TabPanel({ phase, running }: { phase: PomodoroPhase, running: boolean }
   };
 
   return (
-    <Tabs value={phase} onChange={handleTabChange} variant="pills" w="360px">
+    <Tabs value={phase} onChange={handleTabChange} variant="pills" w="350px">
       <Tabs.List grow>
         <Tabs.Tab value="work" style={{ backgroundColor: phase === "work" ? "rgba(100, 100, 100, 0.1)" : "transparent" }}>
           Pomodoro
@@ -84,11 +84,11 @@ function TabPanel({ phase, running }: { phase: PomodoroPhase, running: boolean }
   );
 }
 
-function Countdown({ running, paused }: { running: boolean, paused: boolean }) {
-  const flipEndsAt = useFlipClockEndsAt()
+function Countdown({ running }: { running: boolean }) {
+  const secondsRemaining = useSecondsRemaining();
 
   /** Steppers visible only when no active phase */
-  const showSteppers = !running && !paused;
+  const showSteppers = !running;
 
   const sideControlSlotPx = 42;
 
@@ -98,6 +98,7 @@ function Countdown({ running, paused }: { running: boolean, paused: boolean }) {
       align="center"
       justify="center"
       gap="xs"
+      pb={2}
     >
       <Box
         style={{ width: sideControlSlotPx, flexShrink: 0 }}
@@ -106,13 +107,12 @@ function Countdown({ running, paused }: { running: boolean, paused: boolean }) {
       >
       </Box>
 
-      <Box className="flex justify-center min-w-0 opacity-80" style={{ flex: "0 1 auto" }}>
+      <Box
+        className="flex justify-center min-w-0 opacity-80"
+        style={{ flex: "0 1 auto", fontSize: "clamp(5rem, 8vw, 3.25rem)" }}
+      >
         <div role="timer" aria-live="polite" aria-atomic="true">
-          <FlipClockJsCountdown
-            endsAt={flipEndsAt}
-            running={running}
-            fontSize="clamp(5rem, 8vw, 3.25rem)"
-          />
+          <FlipTimer secondsRemaining={secondsRemaining} fontSize="4.2rem"/>
         </div>
       </Box>
 
@@ -121,7 +121,7 @@ function Countdown({ running, paused }: { running: boolean, paused: boolean }) {
         className="flex justify-center"
       >
         {showSteppers ? (
-          <Stack gap={2} align="center">
+          <Stack gap={2} align="center" ml="-4rem">
             <ActionIcon
               variant="transparent"
               size="lg"
@@ -150,18 +150,31 @@ function Countdown({ running, paused }: { running: boolean, paused: boolean }) {
 }
 
 function PrimaryButton({ phase, running, paused }: { phase: PomodoroPhase, running: boolean, paused: boolean }) {
-  const primaryButtonText = running ? "Pause" : paused ? "Resume" : "Start";
+  const expired = useCurrentPhaseExpired();
+  const primaryButtonText = running
+    ? expired
+      ? phase === "work"
+        ? "Take a Break"
+        : "Start Working"
+      : "Pause"
+    : paused
+      ? "Resume"
+      : "Start";
 
   const handlePrimaryClick = () => {
     if (running) {
-      pomodoroActions.pause();
+      if (expired) {
+        pomodoroActions.nextPhase();
+      } else {
+        pomodoroActions.pause();
+      }
     } else {
       pomodoroActions.startOrResume();
     }
   };
 
-  /** Skip button visible whenever we have an active phase run */
-  const showSkip = running || paused;
+  /** Skip visible only while a run exists and the deadline has not been crossed. */
+  const showSkip = (running || paused) && !expired;
 
   const sideControlSlotPx = 42;
 
@@ -201,7 +214,7 @@ function PrimaryButton({ phase, running, paused }: { phase: PomodoroPhase, runni
           size="xl"
           radius="md"
           c="gray.3"
-          onClick={pomodoroActions.skip}
+          onClick={pomodoroActions.nextPhase}
           aria-label="Skip to next phase"
           className={showSkip ? "" : "invisible pointer-events-none"}
         >
@@ -213,38 +226,21 @@ function PrimaryButton({ phase, running, paused }: { phase: PomodoroPhase, runni
 }
 
 function usePomodoroMechanics(): [PomodoroPhase, boolean, boolean] {
-  useEffect(pomodoroActions.init, []);
+  const audioRef = useRef<AudioContext | null>(null);
+
+  useEffect(() => {
+    return pomodoroActions.init({
+      onPhaseDeadlineCrossed: (completed) => {
+        const ctx = audioRef.current;
+        if (ctx) playPhaseChime(ctx);
+        phaseCompleteNotification(completed);
+      },
+    });
+  }, []);
 
   const phase = useCurrentPhase();
   const running = useIsRunning();
   const paused = useIsPaused();
-  const phaseExpired = useCurrentPhaseExpired();
-
-  const audioRef = useRef<AudioContext | null>(null);
-  const [, setUiTick] = useState(0);
-
-  const handlePhaseComplete = useCallback(() => {
-    const ctx = audioRef.current;
-    if (ctx) playPhaseChime(ctx);
-    phaseCompleteNotification(phase);
-  }, [phase]);
-
-  useEffect(() => {
-    if (!running) return;
-    const id = window.setInterval(() => {
-      if (!phaseExpired) return;
-      pomodoroActions.onDeadlineReached();
-      handlePhaseComplete();
-    }, 200);
-    return () => window.clearInterval(id);
-  }, [running, handlePhaseComplete, phaseExpired, phase]);
-
-  useEffect(() => {
-    const workLive = phase === "work" && (running || paused);
-    if (!running && !workLive) return;
-    const id = window.setInterval(() => setUiTick((n) => n + 1), 200);
-    return () => window.clearInterval(id);
-  }, [phase, running, paused]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

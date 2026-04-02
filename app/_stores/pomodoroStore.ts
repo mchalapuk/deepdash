@@ -1,3 +1,4 @@
+import { useLayoutEffect, useState } from "react";
 import { proxy, useSnapshot, type Snapshot } from "valtio";
 import { subscribe } from "valtio/vanilla";
 import type { PomodoroPhase } from "@/lib/layout";
@@ -18,6 +19,8 @@ const WORK_BLOCKS_BEFORE_LONG_BREAK = 4;
 const MIN_PHASE_MINUTES = 1;
 const MAX_WORK_MINUTES = 120;
 const MAX_BREAK_MINUTES = 60;
+
+const POMODORO_TIMER_INTERVAL_MS = 200;
 
 const pomodoroStore = proxy({
   phase: "work" as PomodoroPhase,
@@ -79,6 +82,8 @@ export type ActivePhaseRun = {
   readonly intendedDurationMs: number;
   pauses: PomodoroPauseSpan[];
   openPauseStartMs: number | null;
+  /** After the wall-clock deadline passes, `init`’s `onPhaseDeadlineCrossed` runs once per run. */
+  deadlineCrossedNotified: boolean;
 };
 
 export type DurationSlice = {
@@ -111,18 +116,30 @@ export function useIsPaused(): boolean {
 }
 
 export function useCurrentPhaseExpired(): boolean {
-  return Date.now() >= useFlipClockEndsAt();
+  const snap = useSnapshot(pomodoroStore);
+  const nowMs = useWallNowMs(phaseRunNeedsWallClock(snap.activePhaseRun));
+  return nowMs >= flipClockEndsAtMsAt(snap, nowMs);
 }
 
-/**
- * Stable wall target for flip-clock: running → run end; paused → freeze at pause start;
- * no run → caller should use idle baseline (see PomodoroPanel useMemo).
- */
-export function useFlipClockEndsAt(): number {
+/** Seconds until the deadline; negative after the wall-clock deadline while the phase stays active. */
+export function useSecondsRemaining(): number {
   const snap = useSnapshot(pomodoroStore);
+  const nowMs = useWallNowMs(phaseRunNeedsWallClock(snap.activePhaseRun));
+  const endsAt = flipClockEndsAtMsAt(snap, nowMs);
+  return Math.ceil((endsAt - nowMs) / 1000);
+}
+
+type PomodoroSnap = {
+  phase: PomodoroPhase;
+  config: DurationSlice | Snapshot<DurationSlice>;
+  activePhaseRun: ActivePhaseRun | Snapshot<ActivePhaseRun> | null;
+};
+
+/** Same as {@link flipClockEndsAtMs} but uses a fixed `nowMs` so hooks can stay render-pure. */
+function flipClockEndsAtMsAt(snap: PomodoroSnap, nowMs: number): number {
   const r = snap.activePhaseRun;
   if (!r) {
-    return Date.now() + durationForPhase(snap.phase, snap.config);
+    return nowMs + durationForPhase(snap.phase, snap.config);
   }
   if (r.openPauseStartMs != null) {
     const anchor = r.openPauseStartMs;
@@ -147,18 +164,35 @@ export function useTodayWorkMsDisplay(): number {
   return sum;
 }
 
+export type PomodoroInitOptions = {
+  /** Called once per run when the wall-clock deadline is crossed (phase stays active until `nextPhase`). */
+  onPhaseDeadlineCrossed?: (completedPhase: PomodoroPhase) => void;
+};
+
 export const pomodoroActions = {
-  init: function init(): () => void {
+  init: function init(options?: PomodoroInitOptions): () => void {
     loadFromStorage();
 
-    return subscribe(pomodoroStore, () => {
+    const unsubPersist = subscribe(pomodoroStore, () => {
       if (!pomodoroStore.hydrated) return;
       persistConfigIfChanged();
       persistLogsIfChanged();
     });
+
+    const stopEngine =
+      typeof window !== "undefined"
+        ? startPomodoroTimerEngine(options?.onPhaseDeadlineCrossed)
+        : () => {};
+
+    return () => {
+      stopEngine();
+      unsubPersist();
+    };
   },
   selectPhase: function selectPhase(next: PomodoroPhase): void {
-    if (isRunning(pomodoroStore.activePhaseRun)) return;
+    if (isRunning(pomodoroStore.activePhaseRun)) {
+      finalizeActivePhase();
+    }
     pomodoroStore.activePhaseRun = null;
     pomodoroStore.phase = next;
   },
@@ -177,14 +211,7 @@ export const pomodoroActions = {
       return;
     }
 
-    const intended = durationForPhase(pomodoroStore.phase, pomodoroStore.config);
-    pomodoroStore.activePhaseRun = {
-      phase: pomodoroStore.phase,
-      phaseStartedAtMs: Date.now(),
-      intendedDurationMs: intended,
-      pauses: [],
-      openPauseStartMs: null,
-    };
+    beginRunningPhaseFromConfig();
   },
   pause: function pause(): void {
     if (!isRunning(pomodoroStore.activePhaseRun)) return;
@@ -204,43 +231,50 @@ export const pomodoroActions = {
     const nextMin = Math.min(maxM, Math.max(MIN_PHASE_MINUTES, curMin + delta));
     const mss = nextMin * 60000;
 
+    if (pomodoroStore.activePhaseRun?.phase === p) {
+      finalizeActivePhase();
+    }
+
     switch (p) {
       case "work":
-        setWorkDurationMs(mss);
+        pomodoroStore.config.workDurationMs = clampPositiveMs(mss, DEFAULT_WORK_MS);
         break;
       case "shortBreak":
-        setShortBreakDurationMs(mss);
+        pomodoroStore.config.shortBreakDurationMs = clampPositiveMs(mss, DEFAULT_SHORT_MS);
         break;
       case "longBreak":
-        setLongBreakDurationMs(mss);
+        pomodoroStore.config.longBreakDurationMs = clampPositiveMs(mss, DEFAULT_LONG_MS);
         break;
     }
   },
-  onDeadlineReached: function onDeadlineReached(): void {
-    const completed = pomodoroStore.phase;
-    const logged = finalizeActivePhase(completed);
-    const day = localDayKey();
-    const next =
-      completed === "work"
-        ? logged
-          ? nextBreakType(day)
-          : "shortBreak"
-        : "work";
-    applyPhaseWithFullDuration(next);
-  },
-  skip: function skip(): void {
+  nextPhase: function nextPhase(): void {
     const current = pomodoroStore.phase;
-    const logged = finalizeActivePhase(current);
+    finalizeActivePhase();
+
     const day = localDayKey();
-    const next =
-      current === "work"
-        ? logged
-          ? nextBreakType(day)
-          : "shortBreak"
-        : "work";
+    const next = current === "work" ? nextBreakType(day) : "work"; // always go to work after a break
     applyPhaseWithFullDuration(next);
+    beginRunningPhaseFromConfig();
   },
 };
+
+function startPomodoroTimerEngine(
+  onPhaseDeadlineCrossed?: (completedPhase: PomodoroPhase) => void,
+): () => void {
+  const id = window.setInterval(() => {
+    const r = pomodoroStore.activePhaseRun;
+    const running = isRunning(r);
+
+    if (running && r && Date.now() >= flipClockEndsAtMs(pomodoroStore)) {
+      if (!r.deadlineCrossedNotified) {
+        r.deadlineCrossedNotified = true;
+        onPhaseDeadlineCrossed?.(pomodoroStore.phase);
+      }
+    }
+  }, POMODORO_TIMER_INTERVAL_MS);
+
+  return () => window.clearInterval(id);
+}
 
 /** Countdown is actively ticking (run exists and not in a pause). */
 function isRunning(activePhase: Snapshot<ActivePhaseRun> | null): boolean {
@@ -252,22 +286,38 @@ function isPaused(activePhase: Snapshot<ActivePhaseRun> | null): boolean {
   return activePhase != null && activePhase.openPauseStartMs != null;
 }
 
-function setWorkDurationMs(ms: number): void {
-  pomodoroStore.config.workDurationMs = clampPositiveMs(ms, DEFAULT_WORK_MS);
+/** Wall time when the current countdown reaches zero: running → run end; paused → frozen at pause; idle → now + phase duration. */
+function flipClockEndsAtMs(snap: PomodoroSnap): number {
+  return flipClockEndsAtMsAt(snap, Date.now());
 }
 
-function setShortBreakDurationMs(ms: number): void {
-  pomodoroStore.config.shortBreakDurationMs = clampPositiveMs(ms, DEFAULT_SHORT_MS);
+function phaseRunNeedsWallClock(
+  run: ActivePhaseRun | Snapshot<ActivePhaseRun> | null,
+): boolean {
+  return run != null && run.openPauseStartMs === null;
 }
 
-function setLongBreakDurationMs(ms: number): void {
-  pomodoroStore.config.longBreakDurationMs = clampPositiveMs(ms, DEFAULT_LONG_MS);
+/** Advances while a phase run is actively counting down (not idle, not paused). */
+function useWallNowMs(needsWallClock: boolean): number {
+  const [nowMs, setNowMs] = useState(0);
+  useLayoutEffect(() => {
+    /* Wall clock for countdown math; must not use Date.now() during render (react-hooks/purity). */
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync `nowMs` when subscription mode changes
+    setNowMs(Date.now());
+    if (!needsWallClock) return;
+    const id = window.setInterval(
+      () => setNowMs(Date.now()),
+      POMODORO_TIMER_INTERVAL_MS,
+    );
+    return () => window.clearInterval(id);
+  }, [needsWallClock]);
+  return nowMs;
 }
 
 /** Append completed phase to today’s log and clear activePhaseRun when it matches. */
-function finalizeActivePhase(completedPhase: PomodoroPhase): boolean {
+function finalizeActivePhase(): boolean {
   const r = pomodoroStore.activePhaseRun;
-  if (!r || r.phase !== completedPhase) return false;
+  if (!r) return false;
 
   const endedAtMs = Date.now();
   const day = localDayKey(new Date(endedAtMs));
@@ -277,7 +327,7 @@ function finalizeActivePhase(completedPhase: PomodoroPhase): boolean {
   }
 
   ensureDayLog(day).entries.push({
-    phase: completedPhase,
+    phase: r.phase,
     startedAtMs: r.phaseStartedAtMs,
     endedAtMs,
     pauses,
@@ -296,6 +346,19 @@ function ensureDayLog(day: string): PomodoroDayLogV1 {
 function applyPhaseWithFullDuration(next: PomodoroPhase): void {
   pomodoroStore.phase = next;
   pomodoroStore.activePhaseRun = null;
+}
+
+/** Starts a running countdown for the current phase (idle Start, or after `pomodoroActions.nextPhase`). */
+function beginRunningPhaseFromConfig(): void {
+  const intended = durationForPhase(pomodoroStore.phase, pomodoroStore.config);
+  pomodoroStore.activePhaseRun = {
+    phase: pomodoroStore.phase,
+    phaseStartedAtMs: Date.now(),
+    intendedDurationMs: intended,
+    pauses: [],
+    openPauseStartMs: null,
+    deadlineCrossedNotified: false,
+  };
 }
 
 /** After a work entry was just appended for `day`, choose short vs long break. */
