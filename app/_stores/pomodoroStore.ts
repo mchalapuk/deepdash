@@ -189,6 +189,22 @@ export function useTodayWorkMsDisplay(): number {
   return sum;
 }
 
+/**
+ * Today’s calendar-day log entries (all phases) plus the active phase run, for session summaries.
+ * Single snapshot subscription — prefer this over reading the store proxy from components.
+ */
+export function useTodayPomodoroDaySlice(): {
+  todayEntries: Snapshot<PomodoroDayLogV1>["entries"];
+  activePhaseRun: Snapshot<ActivePhaseRun> | null;
+} {
+  const day = localDayKey();
+  const snap = useSnapshot(pomodoroStore);
+  return {
+    todayEntries: snap.dayLogs[day]?.entries ?? [],
+    activePhaseRun: snap.activePhaseRun,
+  };
+}
+
 export type PomodoroInitOptions = {
   /** Called once per run when the wall-clock deadline is crossed (phase stays active until `nextPhase`). */
   onPhaseDeadlineCrossed?: (completedPhase: PomodoroPhase) => void;
@@ -215,7 +231,7 @@ export const pomodoroActions = {
     };
   },
   selectPhase: function selectPhase(next: PomodoroPhase): void {
-    if (isRunning(pomodoroStore.activePhaseRun)) {
+    if (pomodoroStore.activePhaseRun) {
       finalizeActivePhase();
     }
     pomodoroStore.activePhaseRun = null;

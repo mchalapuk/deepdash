@@ -1,16 +1,20 @@
-import { Container, Stack } from "@mantine/core";
+import { Container, Stack, Group } from "@mantine/core";
 import { DepsSmoke } from "./_components/DepsSmoke";
 import { PhaseBackdrop } from "./_components/PhaseBackdrop";
 import { Pomodoro } from "./_components/Pomodoro";
+import { TodaysWork } from "./_components/TodaysWork";
 import { WorldClocks } from "./_components/WorldClocks";
 
 export default function Home() {
   return (
     <PhaseBackdrop>
-      <Container py="xl" size="md">
-        <Stack gap="xl">
+      <Container py={52} size="md">
+        <Stack gap="xs">
           <WorldClocks />
-          <Pomodoro />
+          <Group gap={42} wrap="nowrap">
+            <Pomodoro />
+            <TodaysWork />
+          </Group>
           <DepsSmoke />
         </Stack>
       </Container>

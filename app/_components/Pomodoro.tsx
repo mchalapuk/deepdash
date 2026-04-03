@@ -86,7 +86,7 @@ function TabPanel({ phase, running }: { phase: PomodoroPhase, running: boolean }
             } : {
               tab: {
                 backgroundColor: "black",
-                opacity: 0.5,
+                opacity: 0.7,
               },
             }}
           >
