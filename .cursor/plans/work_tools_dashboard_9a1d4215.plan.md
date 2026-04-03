@@ -13,7 +13,7 @@ todos:
     status: completed
   - id: tool-daily-todo
     content: Narrow scroll; one key/day; immediate valtio updates + debounced/throttled localStorage + flush on close; checkbox; done dim+strike; fake trailing row + ActionIcon; Input per row; full keyboard spec + focus rules; rollover modal spec
-    status: pending
+    status: completed
   - id: tool-calculator
     content: Single Mantine Input only; parse result + calculation result lines (math.js); no keypad UI; Enter evaluate; errors in UI; valtio; aria-live
     status: pending

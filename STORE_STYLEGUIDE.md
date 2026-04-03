@@ -15,7 +15,7 @@ This document describes how client-side stores in this codebase are structured. 
 | 1 | **Imports** | Valtio, `valtio/vanilla`, app libs (logger). |
 | 2 | **Module-level constants** | `SCREAMING_SNAKE_CASE` keys, defaults, limits, domain constants. |
 | 3 | **`proxy` state** | Single private `proxy({ ... })`. |
-| 4 | **Exported types** | `export type` for domain and persisted shapes (`V1` suffix where applicable). |
+| 4 | **Exported types** | `export type` for domain and persisted shapes (`V1` suffix where applicable). **Order:** composite / “main” types first, then smaller types they compose (see **Exported types** below). |
 | 5 | **Exported hooks** | `use*` functions using `useSnapshot` only. |
 | 6 | **Other small exported helpers** | Pure utilities consumers need (e.g. `localDayKey`) — keep minimal. |
 | 7 | **Actions object** | `const featureActions = { ... }` — **`init` must be the first method declared** (see below). |
@@ -43,6 +43,8 @@ These bindings are **constants** (not derived at runtime). Declare them **above*
 
 **Naming:** every such **constant** must use **`SCREAMING_SNAKE_CASE`** (e.g. `CONFIG_KEY`, `DEFAULT_WORK_MS`, `MAX_WORK_MINUTES`, `WORK_BLOCKS_BEFORE_LONG_BREAK`).
 
+**Do not** place **functions** between the constants block and the `proxy` (e.g. `localStorage` key builders). Those belong in **Persistence** at the end of the file, next to read/write helpers, even if they only use module-level prefix constants declared above the proxy.
+
 ## The `proxy` state object
 
 - Hold **one** `const myStore = proxy({ ... })` per module.
@@ -54,6 +56,7 @@ These bindings are **constants** (not derived at runtime). Declare them **above*
 
 - **`export type`** for anything **returned from React hooks** (and supporting shapes those return values use): phases, persisted **V1** shapes (`PomodoroConfigV1`, `PomodoroDayLogV1`), in-memory structures (`ActivePhaseRun`, etc.).
 - Suffix **persisted** JSON/document types with **`V1`** (or bump when the schema changes — align with AGENTS.md export/import rules if the data is part of app export).
+- **Order (main before parts):** declare **larger or composite** types first, then **smaller** types that appear as fields inside them (e.g. `TodoDayDocumentV1` before `TodoItem`). TypeScript allows forward references within the same file when a composite type mentions a part type declared just below it.
 
 ## React hooks (`use*`)
 
@@ -101,6 +104,8 @@ init: function init(): () => void {
 ### Storage I/O
 
 *(Placed at the **end of the store file** — see **File layout**.)*
+
+Include here **private helpers that only exist for persistence**, such as functions that build `localStorage` key strings from the module-level prefix constants (those constants stay **above** the `proxy`; the builders live **here**).
 
 Stores use **`localStorage`** for persistence.
 

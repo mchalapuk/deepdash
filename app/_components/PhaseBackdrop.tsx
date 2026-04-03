@@ -15,7 +15,7 @@ export function PhaseBackdrop({ children }: { children: React.ReactNode }) {
 
   return (
     <div
-      className="min-h-full transition-[background-color] duration-500 ease-out"
+      className="min-h-full"
       data-phase={phase}
       style={{ backgroundColor: PHASE_TINT[phase] }}
     >

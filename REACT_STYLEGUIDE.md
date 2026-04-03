@@ -104,6 +104,7 @@ Combine subcomponents, containers, expandable slots, and hooks as needed.
 - Escape apostrophes in text with the **entity** `&apos;` (e.g. `Today&apos;s work`).
 - **Conditional UI**: prefer `condition ? <Node /> : null` over `&&` when the condition is not strictly boolean, to avoid leaking `0`/`""` into the tree.
 - **Casts**: after runtime checks, narrow with `as` only when necessary (e.g. tab value to a union type); prefer validation when values come from untrusted input.
+- **Handlers in JSX:** do not paste **large** anonymous functions into props (e.g. `onKeyDown={(e) => { …many branches… }}` or a long `onChange`). Extract them: use **`useCallback`** (often inside a **custom hook** colocated with the subtree), or a **named `function handleX`** in the module, then pass **`onKeyDown={handleKeyDown}`**. Keeps JSX readable and matches how event logic is tested and reviewed.
 
 ## Comments
 
