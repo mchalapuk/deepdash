@@ -7,7 +7,6 @@ import {
   Group,
   Stack,
   Tabs,
-  Text,
   Paper,
 } from "@mantine/core";
 import {
@@ -18,16 +17,21 @@ import {
 import { useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { getColorFromPhase, type PomodoroPhase } from "@/lib/layout";
+import log from "@/lib/logger";
 import {
-  localDayKey,
   pomodoroActions,
+  useActivePhaseDeadlineCrossed,
+  useActivePhaseRunStartedAt,
   useCurrentPhase,
   useCurrentPhaseExpired,
+  useFlipSecondsRemaining,
   useIsRunning,
   useIsPaused,
   useSecondsRemaining,
-  useTodayWorkMsDisplay,
 } from "@/app/_stores/pomodoroStore";
+
+const POMODORO_INTRO_WAV = "/PomodoroChime_intro.wav";
+const POMODORO_MAIN_WAV = "/PomodoroChime_main.wav";
 
 const FlipTimer = dynamic(
   () => import("./FlipTimer").then((mod) => mod.FlipTimer),
@@ -36,26 +40,22 @@ const FlipTimer = dynamic(
 
 export function Pomodoro() {
   const [phase, running, paused] = usePomodoroMechanics();
-  const todayWork = useTodayWorkMsDisplay();
 
   return (
     <Paper
-      py={34}
+      pb={42}
       w="494px"
       radius="lg"
       style={{
         backgroundColor: "rgba(0, 0, 0, 0.2)",
         boxShadow: "inset 0 0 10px 0 rgba(10, 0, 0, 0.4), inset 0 0 2px 0 rgba(0, 0, 0, 0.8)",
+        overflow: "hidden",
       }}
     >
-      <Stack gap={32} align="center">
+      <Stack gap={36} align="center">
         <TabPanel {...{ phase, running }}/>
         <Countdown {...{ running }}/>
         <PrimaryButton {...{ phase, running, paused }}/>
-
-        <Text size="sm" c="dimmed" ta="center">
-          Today&apos;s work: {formatWorkTotal(todayWork)} ({localDayKey()})
-        </Text>
       </Stack>
     </Paper>
   );
@@ -68,24 +68,38 @@ function TabPanel({ phase, running }: { phase: PomodoroPhase, running: boolean }
   };
 
   return (
-    <Tabs value={phase} onChange={handleTabChange} variant="pills" w="350px">
+    <Tabs value={phase} onChange={handleTabChange} variant="unstyled" w="100%">
       <Tabs.List grow>
-        <Tabs.Tab value="work" style={{ backgroundColor: phase === "work" ? "rgba(100, 100, 100, 0.1)" : "transparent" }}>
-          Pomodoro
-        </Tabs.Tab>
-        <Tabs.Tab value="shortBreak" style={{ backgroundColor: phase === "shortBreak" ? "rgba(100, 100, 100, 0.1)" : "transparent" }}>
-          Short break
-        </Tabs.Tab>
-        <Tabs.Tab value="longBreak" style={{ backgroundColor: phase === "longBreak" ? "rgba(100, 100, 100, 0.1)" : "transparent" }}>
-          Long break
-        </Tabs.Tab>
+        {[
+          { value: "work", label: "Pomodoro" },
+          { value: "shortBreak", label: "Short break" },
+          { value: "longBreak", label: "Long break" },
+        ].map(({ value, label }) => (
+          <Tabs.Tab
+            key={value}
+            value={value}
+            h={64}
+            styles={phase === value ? {
+              tab: {
+                backgroundColor: "transparent",
+              },
+            } : {
+              tab: {
+                backgroundColor: "black",
+                opacity: 0.5,
+              },
+            }}
+          >
+            {label}
+          </Tabs.Tab>
+        ))}
       </Tabs.List>
     </Tabs>
   );
 }
 
 function Countdown({ running }: { running: boolean }) {
-  const secondsRemaining = useSecondsRemaining();
+  const secondsRemaining = useFlipSecondsRemaining();
 
   /** Steppers visible only when no active phase */
   const showSteppers = !running;
@@ -108,7 +122,7 @@ function Countdown({ running }: { running: boolean }) {
       </Box>
 
       <Box
-        className="flex justify-center min-w-0 opacity-80"
+        className="flex justify-center min-w-0 opacity-80 pt-2"
         style={{ flex: "0 1 auto", fontSize: "clamp(5rem, 8vw, 3.25rem)" }}
       >
         <div role="timer" aria-live="polite" aria-atomic="true">
@@ -226,13 +240,50 @@ function PrimaryButton({ phase, running, paused }: { phase: PomodoroPhase, runni
 }
 
 function usePomodoroMechanics(): [PomodoroPhase, boolean, boolean] {
-  const audioRef = useRef<AudioContext | null>(null);
+  const introAudioRef = useRef<HTMLAudioElement | null>(null);
+  const mainAudioRef = useRef<HTMLAudioElement | null>(null);
+  const introPlayedForRunStartedAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const intro = new Audio(POMODORO_INTRO_WAV);
+    const main = new Audio(POMODORO_MAIN_WAV);
+    intro.volume = 0.3;
+    main.volume = 0.2;
+    intro.preload = "auto";
+    main.preload = "auto";
+    main.loop = true;
+    intro.load();
+    main.load();
+    introAudioRef.current = intro;
+    mainAudioRef.current = main;
+
+    return () => {
+      intro.pause();
+      main.pause();
+      intro.src = "";
+      main.src = "";
+      introAudioRef.current = null;
+      mainAudioRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     return pomodoroActions.init({
       onPhaseDeadlineCrossed: (completed) => {
-        const ctx = audioRef.current;
-        if (ctx) playPhaseChime(ctx);
+        const introEl = introAudioRef.current;
+        const mainEl = mainAudioRef.current;
+        if (introEl) {
+          introEl.pause();
+          introEl.currentTime = 0;
+        }
+        if (mainEl) {
+          mainEl.currentTime = 0;
+          void mainEl.play().catch((err: unknown) => {
+            log.error("pomodoro: failed to play main chime loop", err);
+          });
+        }
         phaseCompleteNotification(completed);
       },
     });
@@ -241,16 +292,37 @@ function usePomodoroMechanics(): [PomodoroPhase, boolean, boolean] {
   const phase = useCurrentPhase();
   const running = useIsRunning();
   const paused = useIsPaused();
+  const secondsRemaining = useSecondsRemaining();
+  const runStartedAt = useActivePhaseRunStartedAt();
+  const deadlineCrossed = useActivePhaseDeadlineCrossed();
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    audioRef.current = new AudioContext();
+    if (runStartedAt == null) {
+      introPlayedForRunStartedAtRef.current = null;
+    }
+  }, [runStartedAt]);
 
-    return () => {
-      audioRef.current?.close();
-      audioRef.current = null;
-    };
-  }, []);
+  useEffect(() => {
+    if (!running || paused || runStartedAt == null) return;
+    if (secondsRemaining > 4 || secondsRemaining < 1) return;
+    if (introPlayedForRunStartedAtRef.current === runStartedAt) return;
+
+    introPlayedForRunStartedAtRef.current = runStartedAt;
+    const introEl = introAudioRef.current;
+    if (!introEl) return;
+    introEl.currentTime = 0;
+    void introEl.play().catch((err: unknown) => {
+      log.error("pomodoro: failed to play intro chime", err);
+    });
+  }, [running, paused, runStartedAt, secondsRemaining]);
+
+  useEffect(() => {
+    if (deadlineCrossed) return;
+    const mainEl = mainAudioRef.current;
+    if (!mainEl) return;
+    mainEl.pause();
+    mainEl.currentTime = 0;
+  }, [deadlineCrossed]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -258,15 +330,6 @@ function usePomodoroMechanics(): [PomodoroPhase, boolean, boolean] {
   }, []);
 
   return [phase, running, paused];
-}
-
-function formatWorkTotal(ms: number): string {
-  const m = Math.floor(ms / 60000);
-  const h = Math.floor(m / 60);
-  const min = m % 60;
-  if (h > 0) return `${h}h ${min}m`;
-  if (m > 0) return `${m} min`;
-  return "< 1 min";
 }
 
 function phaseTitle(p: PomodoroPhase): string {
@@ -289,23 +352,3 @@ function phaseCompleteNotification(completed: PomodoroPhase): void {
     /* ignore */
   }
 }
-
-function playPhaseChime(ctx: AudioContext): void {
-  try {
-    void ctx.resume();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.frequency.value = 880;
-    o.type = "sine";
-    const t = ctx.currentTime;
-    g.gain.setValueAtTime(0.12, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-    o.connect(g);
-    g.connect(ctx.destination);
-    o.start(t);
-    o.stop(t + 0.36);
-  } catch {
-    /* ignore */
-  }
-}
-

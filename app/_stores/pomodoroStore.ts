@@ -20,7 +20,10 @@ const MIN_PHASE_MINUTES = 1;
 const MAX_WORK_MINUTES = 120;
 const MAX_BREAK_MINUTES = 60;
 
-const POMODORO_TIMER_INTERVAL_MS = 200;
+const POMODORO_TIMER_INTERVAL_MS = 100;
+
+/** Flip digit animation lags real time; display leads by this much so flips line up with wall seconds. */
+const FLIP_DISPLAY_LEAD_MS = 300;
 
 const pomodoroStore = proxy({
   phase: "work" as PomodoroPhase,
@@ -127,6 +130,28 @@ export function useSecondsRemaining(): number {
   const nowMs = useWallNowMs(phaseRunNeedsWallClock(snap.activePhaseRun));
   const endsAt = flipClockEndsAtMsAt(snap, nowMs);
   return Math.ceil((endsAt - nowMs) / 1000);
+}
+
+/**
+ * Same wall-clock source as {@link useSecondsRemaining}, but flips run ~{@link FLIP_DISPLAY_LEAD_MS}
+ * early so the ~0.7s animation finishes closer to the real second boundary.
+ */
+export function useFlipSecondsRemaining(): number {
+  const snap = useSnapshot(pomodoroStore);
+  const nowMs = useWallNowMs(phaseRunNeedsWallClock(snap.activePhaseRun));
+  const endsAt = flipClockEndsAtMsAt(snap, nowMs);
+  const remMs = endsAt - nowMs;
+  return Math.ceil((remMs - FLIP_DISPLAY_LEAD_MS) / 1000);
+}
+
+/** Wall-clock start of the active run; null when idle. Used to key one-shot cues (e.g. intro chime) per run. */
+export function useActivePhaseRunStartedAt(): number | null {
+  return useSnapshot(pomodoroStore).activePhaseRun?.phaseStartedAtMs ?? null;
+}
+
+/** True after the countdown hits zero until `nextPhase` / skip / tab change clears the run. */
+export function useActivePhaseDeadlineCrossed(): boolean {
+  return useSnapshot(pomodoroStore).activePhaseRun?.deadlineCrossedNotified ?? false;
 }
 
 type PomodoroSnap = {

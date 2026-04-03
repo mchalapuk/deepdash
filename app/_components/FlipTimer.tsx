@@ -18,7 +18,7 @@ export function FlipTimer({ secondsRemaining, fontSize = "clamp(3.9rem, 8vw, 3.2
     <Group wrap="nowrap" align="center" justify="center" gap={2} className="scale-y-112">
       <Text style={{ fontSize }} classNames={{ root: negative ? "" : "opacity-0" }}>-</Text>
       <Flip value={prependZero(minutes)} {...{ fontSize }} />
-      <Text style={{ fontSize, mt: "-0.5rem" }}>:</Text>
+      <Text style={{ fontSize, marginTop: "-0.5rem", transform: "scaleY(0.9)" }}>:</Text>
       <Flip value={prependZero(seconds)} {...{ fontSize }} />
       <Text style={{ fontSize }} classNames={{ root: "opacity-0" }}>-</Text>
     </Group>
