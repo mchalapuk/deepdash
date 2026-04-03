@@ -9,7 +9,7 @@ export default function Home() {
   return (
     <PhaseBackdrop>
       <Container py={52} size="md">
-        <Stack gap="xs">
+        <Stack gap="lg">
           <WorldClocks />
           <Group gap={42} wrap="nowrap">
             <Pomodoro />

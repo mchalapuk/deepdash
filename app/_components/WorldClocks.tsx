@@ -7,6 +7,8 @@ import {
   Group,
   Stack,
   Text,
+  ScrollArea,
+  Space,
 } from "@mantine/core";
 import { IconPlus, IconTrash, IconX } from "@tabler/icons-react";
 import {
@@ -34,6 +36,7 @@ import {
   wallClockDateForTimeZone,
 } from "@/lib/timezones";
 import "react-clock/dist/Clock.css";
+import { PHASE_TINT } from "./PhaseBackdrop";
 
 const Clock = dynamic(() => import("react-clock"), { ssr: false });
 const CLOCK_SIZE = 110;
@@ -41,16 +44,15 @@ const allowedZones = new Set(getSupportedTimeZones());
 
 export function WorldClocks() {
   const m = useWorldClockHeaderMechanics();
+  const phase = useCurrentPhase();
 
   return (
-    <Box
+    <ScrollArea
       component="header"
-      style={{
-        overflowX: "auto",
-        overflowY: "hidden",
-        width: "100%",
-      }}
-      py="md"
+      pos="relative"
+      w="100%"
+      styles={{ thumb: { backgroundColor: "green.8", opacity: 0.5 } }}
+      scrollbars="x"
     >
       <Group
         wrap="nowrap"
@@ -59,8 +61,12 @@ export function WorldClocks() {
         style={{ width: "max-content", paddingBottom: 4 }}
       >
         {m.envTzReady ? <WorldClockPanel {...m} /> : null}
+        <Space w={32} />
       </Group>
-    </Box>
+      <div className="absolute top-0 right-0 w-[80px] h-full" style={{
+        background: `linear-gradient(to left, ${PHASE_TINT[phase]}, transparent)`,
+      }} />
+    </ScrollArea>
   );
 }
 
@@ -233,6 +239,7 @@ function AddClockButton({ implicitZoneSet, clocks }: AddClockButtonProps) {
         minHeight: 120,
         display: "flex",
         alignItems: "flex-start",
+        zIndex: 1,
       }}
       py="xs"
     >

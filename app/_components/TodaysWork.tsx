@@ -1,15 +1,19 @@
 "use client";
 
-import { ScrollArea, Stack, Text, Group, Paper } from "@mantine/core";
+import { ScrollArea, Stack, Text, Group, Paper, Space } from "@mantine/core";
 import { useLayoutEffect, useState } from "react";
 import { type Snapshot } from "valtio";
 import {
   type ActivePhaseRun,
   type PomodoroLoggedPhase,
   type PomodoroPauseSpan,
+  useCurrentPhase,
   useTodayPomodoroDaySlice,
   useTodayWorkMsDisplay,
 } from "@/app/_stores/pomodoroStore";
+
+import { PHASE_TINT } from "./PhaseBackdrop";
+import { getColorFromPhase } from "@/lib/layout";
 
 export function TodaysWork() {
   const totalMs = useTodayWorkMsDisplay();
@@ -17,9 +21,10 @@ export function TodaysWork() {
   const live = activePhaseRun?.phase === "work";
   const nowMs = useLiveNowMs(live);
   const rows = buildTodayWorkRows(todayEntries, activePhaseRun, nowMs);
-
+  const phase = useCurrentPhase();
+  
   return (
-    <Stack gap="md" h="352px" py="xs" style={{ flexGrow: 1, overflow: "hidden" }}>
+    <Stack gap="md" h="352px" pt="xs" style={{ flexGrow: 1, overflow: "hidden" }}>
       <Stack gap={4} pl={6}>
         <Text size="xs" c="dimmed">
           Today&apos;s work
@@ -45,12 +50,16 @@ export function TodaysWork() {
               Duration
             </Text>
           </Group>
-          <ScrollArea pr={18}>
+          <ScrollArea pr={18} pos="relative" styles={{ thumb: { backgroundColor: "green.8", opacity: 0.5 } }}>
             <Stack component="ul" gap="xs" style={{ listStyle: "none", margin: 0, padding: 0 }}>
               {rows.reverse().map((row, i) => (
                 <SessionBlock key={row.key} index={rows.length - i} row={row} />
               ))}
             </Stack>
+            <Space h={28} />
+            <div className="absolute bottom-0 left-0 w-full h-[40px]" style={{
+              background: `linear-gradient(to top, ${PHASE_TINT[phase]}, transparent)`,
+            }} />
           </ScrollArea>
         </Stack>
       )}
