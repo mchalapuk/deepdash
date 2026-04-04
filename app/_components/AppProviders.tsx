@@ -1,6 +1,7 @@
 "use client";
 
 import { MantineProvider, createTheme } from "@mantine/core";
+import { Notifications } from "@mantine/notifications";
 import { useEffect, useMemo } from "react";
 import log from "@/lib/logger";
 
@@ -24,6 +25,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
 
   return (
     <MantineProvider defaultColorScheme="auto" theme={theme}>
+      <Notifications position="bottom-right" zIndex={400} />
       {children}
     </MantineProvider>
   );

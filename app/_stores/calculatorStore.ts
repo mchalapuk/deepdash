@@ -2,8 +2,9 @@ import { create, all } from "mathjs";
 import { proxy, useSnapshot } from "valtio";
 import { subscribe } from "valtio/vanilla";
 import log from "@/lib/logger";
+import { CALCULATOR_STORAGE_KEY } from "@/lib/persistKeys";
 
-const STORAGE_KEY = "worktools.calculator.v1";
+const STORAGE_KEY = CALCULATOR_STORAGE_KEY;
 const MAX_HISTORY = 100;
 
 const math = create(all);
@@ -26,6 +27,11 @@ export type CalculatorPersistedV1 = {
   expression: string;
   history: CalculatorHistoryEntry[];
 };
+
+export const CALCULATOR_EXPORT_VERSION = 1 as const;
+export type CalculatorExportV1 = {
+  version: typeof CALCULATOR_EXPORT_VERSION;
+} & CalculatorPersistedV1;
 
 export type CalculatorHistoryEntry = {
   id: string;
@@ -94,6 +100,34 @@ export const calculatorActions = {
       calculatorStore.errorMessage = formatMathError(e);
     }
   },
+
+  exportData: function exportData(): CalculatorExportV1 {
+    const body = pickPersisted();
+    return { version: CALCULATOR_EXPORT_VERSION, ...body };
+  },
+
+  /**
+   * Accepts `{ version, expression, history }` or a legacy `{ expression, history }` object (pre–slice-version exports).
+   */
+  importData: function importData(data: unknown): void {
+    const slice = migrateCalculatorSliceToLatest(data);
+    calculatorStore.expression = slice.expression;
+    calculatorStore.errorMessage = null;
+    calculatorStore.lastNormalized = "";
+    calculatorStore.lastResult = "";
+    calculatorStore.history = slice.history.map((h) => ({
+      id: h.id,
+      normalized: h.normalized,
+      result: h.result,
+    }));
+    calculatorStore.nextId = crypto.randomUUID();
+    if (typeof window === "undefined") return;
+    lastPersistedJson = JSON.stringify({
+      expression: slice.expression,
+      history: slice.history,
+    });
+    storageSetItemStrict(STORAGE_KEY, lastPersistedJson);
+  },
 };
 
 // --- formatting ---
@@ -161,6 +195,15 @@ function storageSetItem(key: string, value: string): void {
   }
 }
 
+function storageSetItemStrict(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e: unknown) {
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new Error(`calculator: could not write ${key} (${detail})`);
+  }
+}
+
 function persistIfChanged(): void {
   if (typeof window === "undefined") return;
   const s = JSON.stringify(pickPersisted());
@@ -202,4 +245,51 @@ function isCalculatorHistoryEntry(x: unknown): x is CalculatorHistoryEntry {
   if (!x || typeof x !== "object") return false;
   const o = x as Record<string, unknown>;
   return typeof o.id === "string" && typeof o.normalized === "string" && typeof o.result === "string";
+}
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null;
+}
+
+function bodyFromCalculatorSlice(data: Record<string, unknown>): CalculatorPersistedV1 {
+  const expression = typeof data.expression === "string" ? data.expression : "";
+  const history = parseHistoryArray(data.history);
+  return { expression, history };
+}
+
+/** Normalize any supported calculator import slice to {@link CalculatorExportV1}. */
+export function migrateCalculatorSliceToLatest(data: unknown): CalculatorExportV1 {
+  log.debug("calculator migration: start");
+  if (!isRecord(data)) {
+    log.error("calculator migration: not an object");
+    throw new Error("calculator: import slice is not an object.");
+  }
+  const v = data.version;
+  log.debug("calculator migration: shape", {
+    version: v,
+    hasExpression: typeof data.expression === "string",
+    historyLen: Array.isArray(data.history) ? data.history.length : null,
+  });
+  if (v === undefined) {
+    const body = bodyFromCalculatorSlice(data);
+    log.debug("calculator migration: ok (legacy, no version)", {
+      historyEntries: body.history.length,
+    });
+    return {
+      version: CALCULATOR_EXPORT_VERSION,
+      ...body,
+    };
+  }
+  if (v === CALCULATOR_EXPORT_VERSION) {
+    const body = bodyFromCalculatorSlice(data);
+    log.debug("calculator migration: ok (v1)", { historyEntries: body.history.length });
+    return {
+      version: CALCULATOR_EXPORT_VERSION,
+      ...body,
+    };
+  }
+  log.error("calculator migration: unsupported version", { version: v });
+  throw new Error(
+    `calculator: unsupported export slice version ${String(v)}. Update the app or re-export your data.`,
+  );
 }

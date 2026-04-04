@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "exportedAt": "2026-04-01T12:00:00.000Z",
+  "worldClock": {
+    "version": 1,
+    "clocks": [
+      {
+        "id": "clock-a",
+        "timeZone": "Europe/Warsaw",
+        "label": "Home"
+      }
+    ]
+  },
+  "pomodoro": {
+    "version": 1,
+    "config": {
+      "workDurationMs": 1500000,
+      "shortBreakDurationMs": 300000,
+      "longBreakDurationMs": 900000
+    },
+    "logs": {
+      "days": {
+        "2026-03-31": {
+          "entries": [
+            {
+              "phase": "work",
+              "startedAtMs": 1000,
+              "endedAtMs": 2000,
+              "pauses": [{ "startMs": 1100, "endMs": 1200 }]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "todo": {
+    "version": 1,
+    "todosByDay": {
+      "2026-04-04": {
+        "items": [
+          { "id": "todo-1", "text": "Ship export", "done": false }
+        ]
+      }
+    },
+    "todoRolloverMarkers": {
+      "2026-04-03": "2026-04-04"
+    }
+  },
+  "calculator": {
+    "version": 1,
+    "expression": "2+2",
+    "history": [
+      { "id": "hist-1", "normalized": "4", "result": "4" }
+    ]
+  }
+}

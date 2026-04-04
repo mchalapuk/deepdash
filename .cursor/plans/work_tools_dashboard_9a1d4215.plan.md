@@ -19,7 +19,7 @@ todos:
     status: completed
   - id: data-import-export
     content: Bottom-right Import/Export; versioned JSON + migrations; new Jest test per schema change (AGENTS.md)
-    status: pending
+    status: completed
   - id: dashboard-layout
     content: "app/page.tsx: phase bg; header; grid; import/export bottom-right; responsive stack; a11y"
     status: pending

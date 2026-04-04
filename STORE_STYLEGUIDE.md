@@ -94,6 +94,21 @@ init: function init(): () => void {
 },
 ```
 
+### `exportData` / `importData` (stores included in app JSON backup)
+
+Stores that participate in **`lib/dataExport.ts`** must also expose:
+
+- **`exportData()`** — returns a **versioned slice** plain object, e.g. `{ version: 1, … }`, suitable for JSON. Use a module constant **`FEATURE_EXPORT_VERSION`** and an exported type **`FeatureExportV1`** (bump names when the slice shape changes, e.g. `FeatureExportV2`).
+- **`importData(data: unknown)`** — accepts **any supported slice shape** for that feature (including legacy objects **without** a `version` field when you still support older backups). Updates the **proxy**, **`localStorage`**, and any **`last…Json`** dirty-tracking strings so persistence stays consistent.
+
+Place **`exportData` / `importData` on `featureActions` after domain methods**; **`init` remains the first action.**
+
+Also **export a pure migrator**:
+
+- **`migrateFeatureSliceToLatest(data: unknown): FeatureExportV1`** (name by feature) — **no `localStorage` side effects**; normalizes unknown JSON to the **current** slice type. Used by **`importData`**, by **`tryMigrateWorktoolsBundle`** in `lib/dataExport.ts`, and by Jest. **Branch on `data.version`** (and on legacy shapes) here; throw a clear error if the slice version is unsupported.
+
+Implement **`migrateFeatureSliceToLatest` and slice-specific helpers in the Persistence section** at the **end of the file** (or a `// --- bundle export/import ---` subsection there). **`lib/dataExport.ts`** should only assemble the top-level bundle (`version`, `exportedAt`) and delegate slices to each store — **do not** duplicate per-feature parse/migrate logic outside the store.
+
 ## Private implementation
 
 - **Pure predicates and domain helpers** — e.g. `isRunning`, `durationForPhase`, transition helpers. Typically take **`Snapshot<T>`** in **arguments** so the same function can be called from hooks (snapshotted data) and from actions (proxy state is assignable for reads).

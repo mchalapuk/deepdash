@@ -3,11 +3,12 @@ import { proxy, useSnapshot, type Snapshot } from "valtio";
 import { subscribe } from "valtio/vanilla";
 import type { PomodoroPhase } from "@/lib/layout";
 import log from "@/lib/logger";
+import { POMODORO_CONFIG_KEY, POMODORO_LOGS_KEY } from "@/lib/persistKeys";
 
 export type { PomodoroPhase };
 
-const CONFIG_KEY = "worktools.pomodoro.config.v1";
-const LOGS_KEY = "worktools.pomodoro.logs.v1";
+const CONFIG_KEY = POMODORO_CONFIG_KEY;
+const LOGS_KEY = POMODORO_LOGS_KEY;
 
 const DEFAULT_WORK_MS = 25 * 60 * 1000;
 const DEFAULT_SHORT_MS = 5 * 60 * 1000;
@@ -75,6 +76,13 @@ export type PomodoroDayLogV1 = {
 /** Persisted: map of YYYY-MM-DD → day log */
 export type PomodoroLogsV1 = {
   days: Record<string, PomodoroDayLogV1>;
+};
+
+export const POMODORO_EXPORT_VERSION = 1 as const;
+export type PomodoroExportV1 = {
+  version: typeof POMODORO_EXPORT_VERSION;
+  config: PomodoroConfigV1;
+  logs: PomodoroLogsV1;
 };
 
 export type ActivePhaseRun = {
@@ -296,6 +304,31 @@ export const pomodoroActions = {
     const next = current === "work" ? nextBreakType(day) : "work"; // always go to work after a break
     applyPhaseWithFullDuration(next);
     beginRunningPhaseFromConfig();
+  },
+
+  exportData: function exportData(): PomodoroExportV1 {
+    return {
+      version: POMODORO_EXPORT_VERSION,
+      config: pickPersistedConfig(),
+      logs: pickPersistedLogs(),
+    };
+  },
+
+  /**
+   * Accepts `{ version, config, logs }` or a legacy `{ config, logs }` object (no `version` field).
+   */
+  importData: function importData(data: unknown): void {
+    const slice = migratePomodoroSliceToLatest(data);
+    pomodoroStore.config.workDurationMs = slice.config.workDurationMs;
+    pomodoroStore.config.shortBreakDurationMs = slice.config.shortBreakDurationMs;
+    pomodoroStore.config.longBreakDurationMs = slice.config.longBreakDurationMs;
+    pomodoroStore.dayLogs = { ...slice.logs.days };
+    pomodoroStore.activePhaseRun = null;
+    if (typeof window === "undefined") return;
+    lastConfigJson = JSON.stringify(slice.config);
+    lastLogsJson = JSON.stringify(slice.logs);
+    storageSetItemStrict(CONFIG_KEY, lastConfigJson);
+    storageSetItemStrict(LOGS_KEY, lastLogsJson);
   },
 };
 
@@ -522,6 +555,15 @@ function storageSetItem(key: string, value: string): void {
   }
 }
 
+function storageSetItemStrict(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e: unknown) {
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new Error(`pomodoro: could not write ${key} (${detail})`);
+  }
+}
+
 function persistConfigIfChanged(): void {
   if (typeof window === "undefined") return;
   const s = JSON.stringify(pickPersistedConfig());
@@ -599,4 +641,52 @@ function applyConfigRecord(parsed: Record<string, unknown>): void {
     parsed.longBreakDurationMs,
     DEFAULT_LONG_MS,
   );
+}
+
+function configFromUnknownRecord(parsed: Record<string, unknown>): PomodoroConfigV1 {
+  return {
+    workDurationMs: clampPositiveMs(parsed.workDurationMs, DEFAULT_WORK_MS),
+    shortBreakDurationMs: clampPositiveMs(parsed.shortBreakDurationMs, DEFAULT_SHORT_MS),
+    longBreakDurationMs: clampPositiveMs(parsed.longBreakDurationMs, DEFAULT_LONG_MS),
+  };
+}
+
+/** Normalize any supported pomodoro import slice to {@link PomodoroExportV1}. */
+export function migratePomodoroSliceToLatest(data: unknown): PomodoroExportV1 {
+  log.debug("pomodoro migration: start");
+  if (!isRecord(data)) {
+    log.error("pomodoro migration: not an object");
+    throw new Error("pomodoro: import slice is not an object.");
+  }
+  const v = data.version;
+  log.debug("pomodoro migration: shape", {
+    version: v,
+    hasConfig: isRecord(data.config),
+    hasLogs: isRecord(data.logs),
+  });
+  if (v !== undefined && v !== POMODORO_EXPORT_VERSION) {
+    log.error("pomodoro migration: unsupported version", { version: v });
+    throw new Error(
+      `pomodoro: unsupported export slice version ${String(v)}. Update the app or re-export your data.`,
+    );
+  }
+  const cfgSource = isRecord(data.config) ? data.config : {};
+  const logsRoot = isRecord(data.logs) ? data.logs : { days: {} };
+  const config = configFromUnknownRecord(cfgSource);
+  const dayMap = parseLogsPayload(logsRoot);
+  const dayCount = Object.keys(dayMap).length;
+  let entryCount = 0;
+  for (const dayLog of Object.values(dayMap)) {
+    entryCount += dayLog.entries.length;
+  }
+  log.debug("pomodoro migration: ok", {
+    dayCount,
+    entryCount,
+    workMs: config.workDurationMs,
+  });
+  return {
+    version: POMODORO_EXPORT_VERSION,
+    config,
+    logs: { days: dayMap },
+  };
 }

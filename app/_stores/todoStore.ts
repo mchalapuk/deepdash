@@ -3,13 +3,13 @@ import { subscribe } from "valtio/vanilla";
 
 import { localDayKey } from "@/app/_stores/pomodoroStore";
 import log from "@/lib/logger";
+import {
+  TODO_AUTO_ROLLOVER_MARKER_PREFIX,
+  TODO_DAY_STORAGE_KEY_PREFIX,
+} from "@/lib/persistKeys";
 
 const DEBOUNCE_MS = 400;
 const DAY_CHECK_INTERVAL_MS = 1000;
-/** Prefix for per-calendar-day todo buckets: `{prefix}{YYYY-MM-DD}`. */
-const TODO_DAY_STORAGE_KEY_PREFIX = "worktools.todo.day.";
-/** Prefix for idempotency markers when rolling open tasks from yesterday into today. */
-const TODO_AUTO_ROLLOVER_MARKER_PREFIX = "worktools.todo.autoRolloverFrom.";
 
 const todoStore = proxy({
   /**
@@ -31,6 +31,13 @@ export type TodoItem = {
   id: string;
   text: string;
   done: boolean;
+};
+
+export const TODO_EXPORT_VERSION = 1 as const;
+export type TodoExportV1 = {
+  version: typeof TODO_EXPORT_VERSION;
+  todosByDay: Record<string, TodoDayDocumentV1>;
+  todoRolloverMarkers: Record<string, string>;
 };
 
 export function useTodoList(): { hydrated: boolean; items: readonly TodoItem[] } {
@@ -159,6 +166,33 @@ export const todoActions = {
     if (todoStore.items[i].text.trim() !== "") return;
     todoStore.items.splice(i, 1);
   },
+
+  exportData: function exportData(): TodoExportV1 {
+    return collectTodoExportFromLocalStorage();
+  },
+
+  /**
+   * Replaces all todo day buckets and rollover markers. Does not run auto-rollover side effects.
+   * Accepts `{ version, todosByDay, todoRolloverMarkers }` or a legacy object with those fields and no `version`.
+   */
+  importData: function importData(data: unknown): void {
+    const slice = migrateTodoSliceToLatest(data);
+    if (typeof window === "undefined") return;
+    clearDebounceTimer();
+    clearTodoRelatedStorageKeys();
+    for (const [day, doc] of Object.entries(slice.todosByDay)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+      storageSetItemStrict(dayStorageKey(day), JSON.stringify(doc));
+    }
+    for (const [yKey, todayKey] of Object.entries(slice.todoRolloverMarkers)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(yKey)) continue;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(todayKey)) continue;
+      storageSetItemStrict(autoRolloverMarkerKey(yKey), todayKey);
+    }
+    const today = localDayKey();
+    applyLoadedDay(today, readValidatedDayItems(today));
+    lastWrittenJson = JSON.stringify(pickPersistedDocument());
+  },
 };
 
 // --- domain helpers ---
@@ -277,6 +311,15 @@ function storageSetItem(key: string, value: string): void {
   }
 }
 
+function storageSetItemStrict(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e: unknown) {
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new Error(`todo: could not write ${key} (${detail})`);
+  }
+}
+
 /** Rewrite one day bucket so non-empty incomplete rows are dropped (completed + empty rows stay). */
 function stripPendingFromDayBucket(dayKey: string): void {
   const items = readValidatedDayItems(dayKey);
@@ -351,4 +394,149 @@ function syncCalendarDayIfNeeded(): void {
   applyLoadedDay(today, readValidatedDayItems(today));
   moveYesterdayPendingIntoToday();
   syncTodayPersistSnapshot();
+}
+
+// --- bundle export/import (uses persistence helpers above) ---
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null;
+}
+
+function listLocalStorageKeys(): string[] {
+  if (typeof localStorage === "undefined") return [];
+  const keys: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k) keys.push(k);
+  }
+  return keys;
+}
+
+function readJsonKey(key: string): unknown {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function parseTodosByDayRecord(raw: unknown): Record<string, TodoDayDocumentV1> {
+  if (!isRecord(raw)) return {};
+  const out: Record<string, TodoDayDocumentV1> = {};
+  for (const [day, doc] of Object.entries(raw)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    out[day] = { items: parseTodoDayDocument(doc) };
+  }
+  return out;
+}
+
+function parseRolloverMarkersRecord(raw: unknown): Record<string, string> {
+  if (!isRecord(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) continue;
+    if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+/** Normalize any supported todo import slice to {@link TodoExportV1}. */
+export function migrateTodoSliceToLatest(data: unknown): TodoExportV1 {
+  log.debug("todo migration: start");
+  if (!isRecord(data)) {
+    log.error("todo migration: not an object");
+    throw new Error("todo: import slice is not an object.");
+  }
+  const v = data.version;
+  log.debug("todo migration: shape", {
+    version: v,
+    todosByDayKeys: data.todosByDay != null && isRecord(data.todosByDay) ? Object.keys(data.todosByDay).length : 0,
+    markerKeys:
+      data.todoRolloverMarkers != null && isRecord(data.todoRolloverMarkers)
+        ? Object.keys(data.todoRolloverMarkers).length
+        : 0,
+  });
+  if (v !== undefined && v !== TODO_EXPORT_VERSION) {
+    log.error("todo migration: unsupported version", { version: v });
+    throw new Error(
+      `todo: unsupported export slice version ${String(v)}. Update the app or re-export your data.`,
+    );
+  }
+  const todosByDay = parseTodosByDayRecord(data.todosByDay);
+  const todoRolloverMarkers = parseRolloverMarkersRecord(data.todoRolloverMarkers);
+  let itemCount = 0;
+  for (const doc of Object.values(todosByDay)) {
+    itemCount += doc.items.length;
+  }
+  log.debug("todo migration: ok", {
+    dayCount: Object.keys(todosByDay).length,
+    itemCount,
+    markerCount: Object.keys(todoRolloverMarkers).length,
+  });
+  return {
+    version: TODO_EXPORT_VERSION,
+    todosByDay,
+    todoRolloverMarkers,
+  };
+}
+
+function collectTodoExportFromLocalStorage(): TodoExportV1 {
+  if (typeof window === "undefined") {
+    return {
+      version: TODO_EXPORT_VERSION,
+      todosByDay: {},
+      todoRolloverMarkers: {},
+    };
+  }
+  const todosByDay: Record<string, TodoDayDocumentV1> = {};
+  const todoRolloverMarkers: Record<string, string> = {};
+  for (const key of listLocalStorageKeys()) {
+    if (key.startsWith(TODO_DAY_STORAGE_KEY_PREFIX)) {
+      const day = key.slice(TODO_DAY_STORAGE_KEY_PREFIX.length);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+      const parsed = readJsonKey(key);
+      todosByDay[day] = { items: parseTodoDayDocument(parsed) };
+    } else if (key.startsWith(TODO_AUTO_ROLLOVER_MARKER_PREFIX)) {
+      const yKey = key.slice(TODO_AUTO_ROLLOVER_MARKER_PREFIX.length);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(yKey)) continue;
+      try {
+        const val = localStorage.getItem(key);
+        if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) todoRolloverMarkers[yKey] = val;
+      } catch (e: unknown) {
+        log.warn("todo: read rollover marker for export failed", yKey, e);
+      }
+    }
+  }
+  return {
+    version: TODO_EXPORT_VERSION,
+    todosByDay,
+    todoRolloverMarkers,
+  };
+}
+
+function clearTodoRelatedStorageKeys(): void {
+  const toRemove: string[] = [];
+  for (const key of listLocalStorageKeys()) {
+    if (
+      key.startsWith(TODO_DAY_STORAGE_KEY_PREFIX) ||
+      key.startsWith(TODO_AUTO_ROLLOVER_MARKER_PREFIX)
+    ) {
+      toRemove.push(key);
+    }
+  }
+  for (const k of toRemove) {
+    try {
+      localStorage.removeItem(k);
+    } catch (e: unknown) {
+      log.warn("todo: remove key during import failed", k, e);
+    }
+  }
+}
+
+/** Synchronous write of today’s todo document (clears debounce). Use before export/download. */
+export function flushTodoPersistToStorage(): void {
+  flushPersistSync();
 }

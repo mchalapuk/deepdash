@@ -28,3 +28,5 @@ The app includes **versioned data export/import** (JSON). The **import path must
 2. Add a **new Jest unit test** that loads a **JSON fixture** from the **previous** version (or an explicit older shape), runs the import migration, and asserts the result matches the **current** in-memory/domain shape.
 
 Keep historical fixtures under something like `__fixtures__/export-v{n}.json` so older formats stay covered.
+
+**Bundle orchestration** lives in **`lib/dataExport.ts`** (`CURRENT_WORKTOOLS_EXPORT_VERSION`, `tryMigrateWorktoolsBundle`, `runWorktoolsJsonImportFromText`, `applyWorktoolsImportWithRollback`, `collectWorktoolsExport`, `downloadWorktoolsJson`). **Per-feature versioned slices** and `exportData` / `importData` / `migrate*SliceToLatest` live in each **`app/_stores/*Store.ts`** (see **`STORE_STYLEGUIDE.md`**). UI: **`app/_components/DataImportExport.tsx`**.

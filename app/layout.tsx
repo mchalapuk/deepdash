@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { ColorSchemeScript } from "@mantine/core";
 import "@mantine/core/styles.css";
+import "@mantine/notifications/styles.css";
 import { getLayoutCsp } from "@/lib/csp";
 import { AppProviders } from "./_components/AppProviders";
 import "./globals.css";
