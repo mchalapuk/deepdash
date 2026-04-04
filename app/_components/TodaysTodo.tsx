@@ -2,6 +2,7 @@
 
 import {
   ActionIcon,
+  Box,
   Checkbox,
   Group,
   Input,
@@ -53,19 +54,25 @@ export function TodaysTodo() {
   return (
     <Stack
       gap={0}
-      miw={220}
-      maw={320}
       w="100%"
       pt="xs"
-      h="400px"
+      h="100%"
+      className="min-h-0"
       style={{ overflow: "hidden" }}
     >
-      <Text size="xs" c="dimmed">
+      <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
         Today&apos;s tasks
       </Text>
-      <ScrollArea pr={18} pos="relative" mt={8} mb={8} styles={{
-        thumb: { backgroundColor: "green.8", opacity: 0.5 }
-      }}>
+      <ScrollArea
+        pr={18}
+        pos="relative"
+        mt={8}
+        mb={8}
+        style={{ flex: 1, minHeight: 0 }}
+        styles={{
+          thumb: { backgroundColor: "green.8", opacity: 0.5 },
+        }}
+      >
         <Stack gap={0} pr={6} pb={4}>
           {!m.hydrated ? (
             <Text size="sm" c="dimmed">
@@ -88,11 +95,13 @@ export function TodaysTodo() {
           background: `linear-gradient(to top, ${PHASE_TINT[phase]}, transparent)`,
         }} />
       </ScrollArea>
-      <TodoTrailingRow
-        draftAPI={m.draftAPI}
-        lastItem={m.items.length > 0 ? m.items[m.items.length - 1]! : null}
-        focusAPI={m.focusAPI}
-      />
+      <Box style={{ flexShrink: 0 }}>
+        <TodoTrailingRow
+          draftAPI={m.draftAPI}
+          lastItem={m.items.length > 0 ? m.items[m.items.length - 1]! : null}
+          focusAPI={m.focusAPI}
+        />
+      </Box>
     </Stack>
   );
 }
@@ -131,15 +140,16 @@ function TodoPersistedRow({
         onChange={() => todoActions.toggleDone(id)}
         aria-label={done ? "Mark as not done" : "Mark as done"}
         size="xs"
-        mt={1.5}
         color="gray.7"
         opacity={0.9}
         pos="relative"
+        top={3.5}
       />
       <Input
         ref={composeInputRef}
         flex={1}
-        size="xs"
+        size="sm"
+        h="30px"
         value={text}
         onChange={onChange}
         onBlur={onBlurPersisted}
@@ -200,7 +210,7 @@ function TodoTrailingRow({
       <Input
         ref={bindRef}
         flex={1}
-        size="xs"
+        size="sm"
         placeholder="Add a task…"
         value={draftAPI.draft}
         variant="unstyled"

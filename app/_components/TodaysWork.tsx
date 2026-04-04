@@ -13,7 +13,6 @@ import {
 } from "@/app/_stores/pomodoroStore";
 
 import { PHASE_TINT } from "./PhaseBackdrop";
-import { getColorFromPhase } from "@/lib/layout";
 
 export function TodaysWork() {
   const totalMs = useTodayWorkMsDisplay();
@@ -24,8 +23,8 @@ export function TodaysWork() {
   const phase = useCurrentPhase();
   
   return (
-    <Stack gap="md" h="352px" pt="xs" style={{ flexGrow: 1, overflow: "hidden" }}>
-      <Stack gap={4} pl={6}>
+    <Stack gap="md" h="100%" pt="xs" style={{ minHeight: 0, overflow: "hidden" }}>
+      <Stack gap={4} pl={6} style={{ flexShrink: 0 }}>
         <Text size="xs" c="dimmed">
           Today&apos;s work
         </Text>
@@ -38,8 +37,8 @@ export function TodaysWork() {
           No pomodoro sessions logged today.
         </Text>
       ) : (
-        <Stack gap="xs" style={{ overflow: "hidden" }}>
-          <Group w="100%" wrap="nowrap" pl={12} pr={30}>
+        <Stack gap="xs" style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <Group w="100%" wrap="nowrap" pl={12} pr={30} style={{ flexShrink: 0 }}>
             <Text size="xs" c="dimmed" w="20%" miw="60px">
               Session
             </Text>
@@ -50,7 +49,12 @@ export function TodaysWork() {
               Duration
             </Text>
           </Group>
-          <ScrollArea pr={18} pos="relative" styles={{ thumb: { backgroundColor: "green.8", opacity: 0.5 } }}>
+          <ScrollArea
+            pr={18}
+            pos="relative"
+            style={{ flex: 1, minHeight: 0 }}
+            styles={{ thumb: { backgroundColor: "green.8", opacity: 0.5 } }}
+          >
             <Stack component="ul" gap="xs" style={{ listStyle: "none", margin: 0, padding: 0 }}>
               {rows.reverse().map((row, i) => (
                 <SessionBlock key={row.key} index={rows.length - i} row={row} />

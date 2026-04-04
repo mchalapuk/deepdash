@@ -22,7 +22,7 @@ todos:
     status: completed
   - id: dashboard-layout
     content: "app/page.tsx: phase bg; header; grid; import/export bottom-right; responsive stack; a11y"
-    status: pending
+    status: completed
   - id: readme
     content: "README: static deploy, CSP note, features, todo debounced localStorage + flush on close, stack, offline (hosting+cache+SW) — no long per-tool docs"
     status: pending

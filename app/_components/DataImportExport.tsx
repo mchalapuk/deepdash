@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Button, Group } from "@mantine/core";
+import { ActionIcon, Box, Stack } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { type ChangeEvent, type RefObject, useCallback, useRef } from "react";
 
@@ -12,6 +12,7 @@ import {
 } from "@/lib/dataExport";
 import log from "@/lib/logger";
 import { usePhaseColor } from "@/lib/layout";
+import { IconDownload, IconUpload } from "@tabler/icons-react";
 
 export function DataImportExport() {
   const [fileInputRef, onExport, onPickImportFile, onFileChange] = useDataImportExport();
@@ -29,18 +30,19 @@ export function DataImportExport() {
       />
       <Box
         pos="fixed"
-        bottom={16}
-        right={16}
+        bottom={28}
+        right={28}
         style={{ zIndex: 200 }}
+        aria-label="Export and import app data"
       >
-        <Group gap="xs">
-          <Button variant="filled" size="xs" color={color} onClick={onExport} opacity={0.92}>
-            Export
-          </Button>
-          <Button variant="filled" size="xs" color="gray.7" onClick={onPickImportFile}>
-            Import
-          </Button>
-        </Group>
+        <Stack gap={6}>
+          <ActionIcon size="md" color="gray" onClick={onExport} opacity={0.9}>
+            <IconDownload size={16} title="Export data" />
+          </ActionIcon>
+          <ActionIcon size="md" color="gray" onClick={onPickImportFile} opacity={0.9}>
+            <IconUpload size={16} title="Import data" />
+          </ActionIcon>
+        </Stack>
       </Box>
     </>
   );

@@ -15,7 +15,7 @@ export function PhaseBackdrop({ children }: { children: React.ReactNode }) {
 
   return (
     <div
-      className="min-h-full"
+      className="h-[100dvh] overflow-hidden"
       data-phase={phase}
       style={{ backgroundColor: PHASE_TINT[phase] }}
     >

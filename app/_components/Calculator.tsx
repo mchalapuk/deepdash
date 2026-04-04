@@ -36,11 +36,14 @@ export function Calculator() {
   });
 
   return (
-    <Stack gap={0} w="100%" maw={494}>
-      <Text size="xs" c="dimmed">
+    <Stack
+      gap={0}
+      className="min-h-0 w-full h-full overflow-hidden flex-grow"
+    >
+      <Text size="xs" c="dimmed" pl={6}>
         Calculator
       </Text>
-      <Group gap={0} ml={-6}>
+      <Group gap={0} ml={-6} w="100%">
         <IconChevronRight size={22} onClick={() => {
           inputRef.current?.focus();
         }}/>
@@ -48,7 +51,8 @@ export function Calculator() {
           <Input
             ref={inputRef}
             variant="unstyled"
-            size="lg"
+            size="xl"
+            w="100%"
             value={expression}
             placeholder="Expression…"
             onChange={(e) => {
@@ -81,8 +85,8 @@ export function Calculator() {
           ) : (
             lastResult && (
               <Text
-                size="lg"
-                h="50px"
+                size="xl"
+                h="58px"
                 w="100%"
                 onClick={() => {
                   inputRef.current?.focus();
@@ -117,7 +121,6 @@ function CalculatorHistory({ inputRef }: {inputRef: React.RefObject<HTMLInputEle
   return (
     history.length > 0 ? (
       <ScrollArea
-        h={220}
         type="hover"
         scrollbars="y"
         offsetScrollbars

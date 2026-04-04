@@ -44,7 +44,7 @@ export function Pomodoro() {
   return (
     <Paper
       pb={42}
-      w="494px"
+      w="100%"
       radius="lg"
       style={{
         backgroundColor: "rgba(0, 0, 0, 0.2)",
@@ -104,8 +104,6 @@ function Countdown({ running }: { running: boolean }) {
   /** Steppers visible only when no active phase */
   const showSteppers = !running;
 
-  const sideControlSlotPx = 42;
-
   return (
     <Group
       wrap="nowrap"
@@ -113,9 +111,10 @@ function Countdown({ running }: { running: boolean }) {
       justify="center"
       gap="xs"
       pb={2}
+      w="100%"
     >
       <Box
-        style={{ width: sideControlSlotPx, flexShrink: 0 }}
+        style={{ flexGrow: 1 }}
         aria-hidden
         className="invisible pointer-events-none"
       >
@@ -131,11 +130,11 @@ function Countdown({ running }: { running: boolean }) {
       </Box>
 
       <Box
-        style={{ width: sideControlSlotPx, flexShrink: 0 }}
+        style={{ flexGrow: 1 }}
         className="flex justify-center"
       >
         {showSteppers ? (
-          <Stack gap={2} align="center" ml="-4rem">
+          <Stack gap={2} align="center" ml="-5rem">
             <ActionIcon
               variant="transparent"
               size="lg"

@@ -283,13 +283,13 @@ function AddClockButton({ implicitZoneSet, clocks }: AddClockButtonProps) {
       ) : (
         <ActionIcon
           variant="light"
-          size="xl"
+          size="lg"
           radius="md"
           color={primaryColor}
           onClick={onExpand}
           aria-label={addAriaLabel}
         >
-          <IconPlus size={22} stroke={2} />
+          <IconPlus size={20} stroke={2} />
         </ActionIcon>
       )}
     </Box>
