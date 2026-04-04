@@ -25,7 +25,7 @@ todos:
     status: completed
   - id: readme
     content: "README: static deploy, CSP note, features, todo debounced localStorage + flush on close, stack, offline (hosting+cache+SW) — no long per-tool docs"
-    status: pending
+    status: completed
 isProject: false
 ---
 
