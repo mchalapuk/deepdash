@@ -16,7 +16,7 @@ todos:
     status: completed
   - id: tool-calculator
     content: Single Mantine Input only; parse result + calculation result lines (math.js); no keypad UI; Enter evaluate; errors in UI; valtio; aria-live
-    status: pending
+    status: completed
   - id: data-import-export
     content: Bottom-right Import/Export; versioned JSON + migrations; new Jest test per schema change (AGENTS.md)
     status: pending

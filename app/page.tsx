@@ -1,4 +1,5 @@
 import { Container, Stack, Group } from "@mantine/core";
+import { Calculator } from "./_components/Calculator";
 import { DepsSmoke } from "./_components/DepsSmoke";
 import { PhaseBackdrop } from "./_components/PhaseBackdrop";
 import { Pomodoro } from "./_components/Pomodoro";
@@ -15,6 +16,7 @@ export default function Home() {
           <Group gap={42} align="flex-start" wrap="wrap">
             <Stack gap="lg" style={{ flex: "1 1 360px", minWidth: 0 }}>
               <Pomodoro />
+              <Calculator />
               <TodaysWork />
             </Stack>
             <TodaysTodo />
