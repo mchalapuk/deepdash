@@ -38,7 +38,7 @@ Use the shared **logger** instead of raw `console.*` so levels stay consistent.
 
 These bindings are **constants** (not derived at runtime). Declare them **above** the `proxy`:
 
-- **Versioned storage keys** — namespaced and versioned, e.g. `worktools.pomodoro.config.v1`, so migrations and collisions stay manageable.
+- **Versioned storage keys** — namespaced and versioned, e.g. `deepdash.pomodoro.config.v1`, so migrations and collisions stay manageable.
 - **Defaults, limits, and domain constants** — durations, thresholds, etc.
 
 **Naming:** every such **constant** must use **`SCREAMING_SNAKE_CASE`** (e.g. `CONFIG_KEY`, `DEFAULT_WORK_MS`, `MAX_WORK_MINUTES`, `WORK_BLOCKS_BEFORE_LONG_BREAK`).
@@ -105,7 +105,7 @@ Place **`exportData` / `importData` on `featureActions` after domain methods**; 
 
 Also **export a pure migrator**:
 
-- **`migrateFeatureSliceToLatest(data: unknown): FeatureExportV1`** (name by feature) — **no `localStorage` side effects**; normalizes unknown JSON to the **current** slice type. Used by **`importData`**, by **`tryMigrateWorktoolsBundle`** in `lib/dataExport.ts`, and by Jest. **Branch on `data.version`** (and on legacy shapes) here; throw a clear error if the slice version is unsupported.
+- **`migrateFeatureSliceToLatest(data: unknown): FeatureExportV1`** (name by feature) — **no `localStorage` side effects**; normalizes unknown JSON to the **current** slice type. Used by **`importData`**, by **`tryMigrateDeepdashBundle`** in `lib/dataExport.ts`, and by Jest. **Branch on `data.version`** (and on legacy shapes) here; throw a clear error if the slice version is unsupported.
 
 Implement **`migrateFeatureSliceToLatest` and slice-specific helpers in the Persistence section** at the **end of the file** (or a `// --- bundle export/import ---` subsection there). **`lib/dataExport.ts`** should only assemble the top-level bundle (`version`, `exportedAt`) and delegate slices to each store — **do not** duplicate per-feature parse/migrate logic outside the store.
 

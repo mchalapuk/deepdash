@@ -2,7 +2,7 @@ import { create, all } from "mathjs";
 import { proxy, useSnapshot } from "valtio";
 import { subscribe } from "valtio/vanilla";
 import log from "@/lib/logger";
-import { CALCULATOR_STORAGE_KEY } from "@/lib/persistKeys";
+import { CALCULATOR_STORAGE_KEY, migrateLegacyPersistKeysOnce } from "@/lib/persistKeys";
 
 const STORAGE_KEY = CALCULATOR_STORAGE_KEY;
 const MAX_HISTORY = 100;
@@ -155,6 +155,7 @@ let lastPersistedJson = "";
 
 function loadFromStorage(): void {
   if (typeof window === "undefined") return;
+  migrateLegacyPersistKeysOnce();
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {

@@ -3,7 +3,11 @@ import { proxy, useSnapshot, type Snapshot } from "valtio";
 import { subscribe } from "valtio/vanilla";
 import type { PomodoroPhase } from "@/lib/layout";
 import log from "@/lib/logger";
-import { POMODORO_CONFIG_KEY, POMODORO_LOGS_KEY } from "@/lib/persistKeys";
+import {
+  migrateLegacyPersistKeysOnce,
+  POMODORO_CONFIG_KEY,
+  POMODORO_LOGS_KEY,
+} from "@/lib/persistKeys";
 
 export type { PomodoroPhase };
 
@@ -504,6 +508,7 @@ let lastLogsJson = "";
 
 function loadFromStorage(): void {
   if (typeof window === "undefined") return;
+  migrateLegacyPersistKeysOnce();
   try {
     const configRaw = localStorage.getItem(CONFIG_KEY);
     if (configRaw) {

@@ -22,10 +22,10 @@ import {
 import log from "@/lib/logger";
 
 /** Bump when the **bundle** layout changes (not necessarily every slice bump). */
-export const CURRENT_WORKTOOLS_EXPORT_VERSION = 1 as const;
+export const CURRENT_DEEPDASH_EXPORT_VERSION = 1 as const;
 
-export type WorktoolsExportLatest = {
-  version: typeof CURRENT_WORKTOOLS_EXPORT_VERSION;
+export type DeepdashExportLatest = {
+  version: typeof CURRENT_DEEPDASH_EXPORT_VERSION;
   exportedAt: string;
   worldClock: WorldClockExportV1;
   pomodoro: PomodoroExportV1;
@@ -34,13 +34,13 @@ export type WorktoolsExportLatest = {
 };
 
 /** Builds the bundle from live stores / `localStorage` (browser only). */
-export function collectWorktoolsExport(): WorktoolsExportLatest {
+export function collectDeepdashExport(): DeepdashExportLatest {
   if (typeof localStorage === "undefined") {
     throw new Error("Export is only available in the browser.");
   }
   flushTodoPersistToStorage();
   return {
-    version: CURRENT_WORKTOOLS_EXPORT_VERSION,
+    version: CURRENT_DEEPDASH_EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     worldClock: worldClockActions.exportData(),
     pomodoro: pomodoroActions.exportData(),
@@ -49,7 +49,7 @@ export function collectWorktoolsExport(): WorktoolsExportLatest {
   };
 }
 
-export function downloadWorktoolsJson(data: WorktoolsExportLatest): void {
+export function downloadDeepdashJson(data: DeepdashExportLatest): void {
   const blob = new Blob([JSON.stringify(data, null, 2)], {
     type: "application/json",
   });
@@ -58,7 +58,7 @@ export function downloadWorktoolsJson(data: WorktoolsExportLatest): void {
   const day = new Date();
   const stamp = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
   a.href = url;
-  a.download = `worktools-export-${stamp}.json`;
+  a.download = `deepdash-export-${stamp}.json`;
   a.rel = "noopener";
   document.body.appendChild(a);
   a.click();
@@ -66,44 +66,44 @@ export function downloadWorktoolsJson(data: WorktoolsExportLatest): void {
   URL.revokeObjectURL(url);
 }
 
-export type WorktoolsJsonImportRunResult =
+export type DeepdashJsonImportRunResult =
   | { ok: true }
-  | { ok: false; errors: WorktoolsImportError[] };
+  | { ok: false; errors: DeepdashImportError[] };
 
-export type WorktoolsImportError = {
-  phase: WorktoolsImportErrorPhase;
-  module?: WorktoolsImportModuleId;
+export type DeepdashImportError = {
+  phase: DeepdashImportErrorPhase;
+  module?: DeepdashImportModuleId;
   message: string;
 };
 
-export type WorktoolsImportModuleId = "worldClock" | "pomodoro" | "todo" | "calculator";
-export type WorktoolsImportErrorPhase = "bundle" | "migration" | "import" | "rollback" | "backup";
+export type DeepdashImportModuleId = "worldClock" | "pomodoro" | "todo" | "calculator";
+export type DeepdashImportErrorPhase = "bundle" | "migration" | "import" | "rollback" | "backup";
 
 /**
  * Full client pipeline: `JSON.parse` → migrate all slices → apply with rollback.
  * Does not reload the page.
  */
-export function runWorktoolsJsonImportFromText(text: string): WorktoolsJsonImportRunResult {
-  log.debug("worktools import pipeline: JSON.parse");
+export function runDeepdashJsonImportFromText(text: string): DeepdashJsonImportRunResult {
+  log.debug("deepdash import pipeline: JSON.parse");
   let raw: unknown;
   try {
     raw = JSON.parse(text) as unknown;
   } catch (e: unknown) {
     const detail = e instanceof Error ? e.message : String(e);
-    log.error("worktools import pipeline: invalid JSON", e);
+    log.error("deepdash import pipeline: invalid JSON", e);
     return {
       ok: false,
       errors: [{ phase: "bundle", message: `Invalid JSON: ${detail}` }],
     };
   }
 
-  const mig = tryMigrateWorktoolsBundle(raw);
+  const mig = tryMigrateDeepdashBundle(raw);
   if (!mig.ok) {
     return { ok: false, errors: mig.errors };
   }
 
-  const latest: WorktoolsExportLatest = {
-    version: CURRENT_WORKTOOLS_EXPORT_VERSION,
+  const latest: DeepdashExportLatest = {
+    version: CURRENT_DEEPDASH_EXPORT_VERSION,
     exportedAt: mig.exportedAt,
     worldClock: mig.worldClock,
     pomodoro: mig.pomodoro,
@@ -111,14 +111,14 @@ export function runWorktoolsJsonImportFromText(text: string): WorktoolsJsonImpor
     calculator: mig.calculator,
   };
 
-  const applied = applyWorktoolsImportWithRollback(latest);
+  const applied = applyDeepdashImportWithRollback(latest);
   if (!applied.ok) {
     return { ok: false, errors: applied.errors };
   }
   return { ok: true };
 }
 
-export type TryMigrateWorktoolsBundleResult =
+export type TryMigrateDeepdashBundleResult =
   | {
       ok: true;
       exportedAt: string;
@@ -127,16 +127,16 @@ export type TryMigrateWorktoolsBundleResult =
       todo: TodoExportV1;
       calculator: CalculatorExportV1;
     }
-  | { ok: false; errors: WorktoolsImportError[] };
+  | { ok: false; errors: DeepdashImportError[] };
 
 /**
  * Runs bundle validation and **all** per-module migrations, collecting every failure (does not stop at the first slice error).
  */
-export function tryMigrateWorktoolsBundle(raw: unknown): TryMigrateWorktoolsBundleResult {
-  log.debug("worktools migration phase: start");
+export function tryMigrateDeepdashBundle(raw: unknown): TryMigrateDeepdashBundleResult {
+  log.debug("deepdash migration phase: start");
   const bundleErr = bundleValidationErrors(raw);
   if (bundleErr) {
-    log.warn("worktools migration phase: bundle validation failed", bundleErr);
+    log.warn("deepdash migration phase: bundle validation failed", bundleErr);
     return { ok: false, errors: bundleErr };
   }
 
@@ -144,23 +144,23 @@ export function tryMigrateWorktoolsBundle(raw: unknown): TryMigrateWorktoolsBund
   const { exportedAt, worldClockPayload, pomodoroPayload, todoPayload, calculatorPayload } =
     extractSlicePayloads(r);
 
-  log.debug("worktools migration phase: slice payloads prepared", {
+  log.debug("deepdash migration phase: slice payloads prepared", {
     exportedAt,
     worldClockKind: Array.isArray(worldClockPayload) ? "array" : typeof worldClockPayload,
   });
 
-  const errors: WorktoolsImportError[] = [];
+  const errors: DeepdashImportError[] = [];
   let worldClock: WorldClockExportV1 | undefined;
   let pomodoro: PomodoroExportV1 | undefined;
   let todo: TodoExportV1 | undefined;
   let calculator: CalculatorExportV1 | undefined;
 
-  const trySlice = (module: WorktoolsImportModuleId, fn: () => void): void => {
+  const trySlice = (module: DeepdashImportModuleId, fn: () => void): void => {
     try {
       fn();
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
-      log.error(`worktools migration phase: ${module} failed`, e);
+      log.error(`deepdash migration phase: ${module} failed`, e);
       errors.push({ phase: "migration", module, message });
     }
   };
@@ -179,14 +179,14 @@ export function tryMigrateWorktoolsBundle(raw: unknown): TryMigrateWorktoolsBund
   });
 
   if (errors.length > 0) {
-    log.warn("worktools migration phase: completed with errors", {
+    log.warn("deepdash migration phase: completed with errors", {
       count: errors.length,
       modules: errors.map((x) => x.module).filter(Boolean),
     });
     return { ok: false, errors };
   }
 
-  log.debug("worktools migration phase: all slices ok");
+  log.debug("deepdash migration phase: all slices ok");
   return {
     ok: true,
     exportedAt,
@@ -197,7 +197,7 @@ export function tryMigrateWorktoolsBundle(raw: unknown): TryMigrateWorktoolsBund
   };
 }
 
-export function formatWorktoolsImportErrorsForUser(errors: WorktoolsImportError[]): string {
+export function formatDeepdashImportErrorsForUser(errors: DeepdashImportError[]): string {
   return errors
     .map((e) => {
       if (e.phase === "bundle" || e.phase === "backup") {
@@ -212,7 +212,7 @@ export function formatWorktoolsImportErrorsForUser(errors: WorktoolsImportError[
 }
 
 /** Applies a migrated bundle by delegating to each store (no rollback). Used for rollback replay only. */
-function applyWorktoolsImport(data: WorktoolsExportLatest): void {
+function applyDeepdashImport(data: DeepdashExportLatest): void {
   if (typeof localStorage === "undefined") {
     throw new Error("Import is only available in the browser.");
   }
@@ -222,23 +222,23 @@ function applyWorktoolsImport(data: WorktoolsExportLatest): void {
   calculatorActions.importData(data.calculator);
 }
 
-type ApplyWorktoolsImportWithRollbackResult =
+type ApplyDeepdashImportWithRollbackResult =
   | { ok: true }
-  | { ok: false; errors: WorktoolsImportError[] };
+  | { ok: false; errors: DeepdashImportError[] };
 
 /**
  * Snapshots current data, applies `data` module-by-module; on first failure rolls back the snapshot once (best-effort).
  */
-export function applyWorktoolsImportWithRollback(
-  data: WorktoolsExportLatest,
-): ApplyWorktoolsImportWithRollbackResult {
-  log.debug("worktools import phase: capturing backup");
-  let backup: WorktoolsExportLatest;
+export function applyDeepdashImportWithRollback(
+  data: DeepdashExportLatest,
+): ApplyDeepdashImportWithRollbackResult {
+  log.debug("deepdash import phase: capturing backup");
+  let backup: DeepdashExportLatest;
   try {
-    backup = collectWorktoolsExport();
+    backup = collectDeepdashExport();
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
-    log.error("worktools import phase: backup snapshot failed", e);
+    log.error("deepdash import phase: backup snapshot failed", e);
     return {
       ok: false,
       errors: [
@@ -250,40 +250,40 @@ export function applyWorktoolsImportWithRollback(
     };
   }
 
-  const steps: { module: WorktoolsImportModuleId; run: () => void }[] = [
+  const steps: { module: DeepdashImportModuleId; run: () => void }[] = [
     { module: "worldClock", run: () => worldClockActions.importData(data.worldClock) },
     { module: "pomodoro", run: () => pomodoroActions.importData(data.pomodoro) },
     { module: "todo", run: () => todoActions.importData(data.todo) },
     { module: "calculator", run: () => calculatorActions.importData(data.calculator) },
   ];
 
-  let importFailure: { module: WorktoolsImportModuleId; message: string } | null = null;
+  let importFailure: { module: DeepdashImportModuleId; message: string } | null = null;
 
   for (const { module, run } of steps) {
     try {
-      log.debug(`worktools import phase: applying ${module}`);
+      log.debug(`deepdash import phase: applying ${module}`);
       run();
-      log.debug(`worktools import phase: ${module} applied`);
+      log.debug(`deepdash import phase: ${module} applied`);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
-      log.error(`worktools import phase: ${module} failed`, e);
+      log.error(`deepdash import phase: ${module} failed`, e);
       importFailure = { module, message };
       break;
     }
   }
 
   if (!importFailure) {
-    log.debug("worktools import phase: all modules applied");
+    log.debug("deepdash import phase: all modules applied");
     return { ok: true };
   }
 
   try {
-    log.warn("worktools import phase: rolling back to pre-import snapshot");
-    applyWorktoolsImport(backup);
-    log.warn("worktools import phase: rollback finished");
+    log.warn("deepdash import phase: rolling back to pre-import snapshot");
+    applyDeepdashImport(backup);
+    log.warn("deepdash import phase: rollback finished");
   } catch (rb: unknown) {
     const rbMsg = rb instanceof Error ? rb.message : String(rb);
-    log.error("worktools import phase: rollback failed", rb);
+    log.error("deepdash import phase: rollback failed", rb);
     return {
       ok: false,
       errors: [
@@ -302,12 +302,12 @@ export function applyWorktoolsImportWithRollback(
   };
 }
 
-function bundleValidationErrors(raw: unknown): WorktoolsImportError[] | null {
+function bundleValidationErrors(raw: unknown): DeepdashImportError[] | null {
   if (!isRecord(raw)) {
     return [{ phase: "bundle", message: "Import file is not a JSON object." }];
   }
   const bundleVersion = raw.version;
-  if (bundleVersion !== CURRENT_WORKTOOLS_EXPORT_VERSION) {
+  if (bundleVersion !== CURRENT_DEEPDASH_EXPORT_VERSION) {
     return [
       {
         phase: "bundle",
@@ -364,4 +364,3 @@ function extractSlicePayloads(raw: Record<string, unknown>): {
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
 }
-

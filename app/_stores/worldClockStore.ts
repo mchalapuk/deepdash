@@ -1,7 +1,7 @@
 import { proxy, useSnapshot, type Snapshot } from "valtio";
 import { subscribe } from "valtio/vanilla";
 import log from "@/lib/logger";
-import { WORLD_CLOCK_STORAGE_KEY } from "@/lib/persistKeys";
+import { migrateLegacyPersistKeysOnce, WORLD_CLOCK_STORAGE_KEY } from "@/lib/persistKeys";
 
 const STORAGE_KEY = WORLD_CLOCK_STORAGE_KEY;
 
@@ -79,6 +79,7 @@ let lastClocksJson = "";
 
 function loadFromStorage(): void {
   if (typeof window === "undefined") return;
+  migrateLegacyPersistKeysOnce();
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {

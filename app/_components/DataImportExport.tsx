@@ -5,10 +5,10 @@ import { notifications } from "@mantine/notifications";
 import { type ChangeEvent, type RefObject, useCallback, useRef } from "react";
 
 import {
-  collectWorktoolsExport,
-  downloadWorktoolsJson,
-  formatWorktoolsImportErrorsForUser,
-  runWorktoolsJsonImportFromText,
+  collectDeepdashExport,
+  downloadDeepdashJson,
+  formatDeepdashImportErrorsForUser,
+  runDeepdashJsonImportFromText,
 } from "@/lib/dataExport";
 import log from "@/lib/logger";
 import { usePhaseColor } from "@/lib/layout";
@@ -58,8 +58,8 @@ function useDataImportExport(): [
 
   const onExport = useCallback(() => {
     try {
-      const data = collectWorktoolsExport();
-      downloadWorktoolsJson(data);
+      const data = collectDeepdashExport();
+      downloadDeepdashJson(data);
       notifications.show({
         title: "Export ready",
         message: "Your data was downloaded as JSON.",
@@ -87,12 +87,12 @@ function useDataImportExport(): [
     void (async () => {
       try {
         const text = await file.text();
-        const result = runWorktoolsJsonImportFromText(text);
+        const result = runDeepdashJsonImportFromText(text);
         if (!result.ok) {
           log.error("import failed", result.errors);
           notifications.show({
             title: "Import failed",
-            message: formatWorktoolsImportErrorsForUser(result.errors),
+            message: formatDeepdashImportErrorsForUser(result.errors),
             color: "red",
           });
           return;
@@ -112,7 +112,7 @@ function useDataImportExport(): [
           message:
             err instanceof Error
               ? err.message
-              : "The file could not be read. Choose a valid worktools export JSON.",
+              : "The file could not be read. Choose a valid Deepdash export JSON.",
           color: "red",
         });
       }

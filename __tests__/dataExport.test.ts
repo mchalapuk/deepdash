@@ -6,22 +6,22 @@ import { todoActions } from "@/app/_stores/todoStore";
 import { worldClockActions } from "@/app/_stores/worldClockStore";
 import exportV1Fixture from "../__fixtures__/export-v1.json";
 import {
-  applyWorktoolsImportWithRollback,
-  CURRENT_WORKTOOLS_EXPORT_VERSION,
-  formatWorktoolsImportErrorsForUser,
-  runWorktoolsJsonImportFromText,
-  tryMigrateWorktoolsBundle,
-  type WorktoolsExportLatest,
+  applyDeepdashImportWithRollback,
+  CURRENT_DEEPDASH_EXPORT_VERSION,
+  formatDeepdashImportErrorsForUser,
+  runDeepdashJsonImportFromText,
+  tryMigrateDeepdashBundle,
+  type DeepdashExportLatest,
 } from "@/lib/dataExport";
 
 /** Asserts migration succeeds; mirrors the former `migrateImportToLatest` helper for tests. */
-function expectMigratedBundle(raw: unknown): WorktoolsExportLatest {
-  const r = tryMigrateWorktoolsBundle(raw);
+function expectMigratedBundle(raw: unknown): DeepdashExportLatest {
+  const r = tryMigrateDeepdashBundle(raw);
   if (!r.ok) {
-    throw new Error(formatWorktoolsImportErrorsForUser(r.errors));
+    throw new Error(formatDeepdashImportErrorsForUser(r.errors));
   }
   return {
-    version: CURRENT_WORKTOOLS_EXPORT_VERSION,
+    version: CURRENT_DEEPDASH_EXPORT_VERSION,
     exportedAt: r.exportedAt,
     worldClock: r.worldClock,
     pomodoro: r.pomodoro,
@@ -34,8 +34,8 @@ describe("dataExport migrations", () => {
   it("migrates v1 fixture (nested slices) to the current canonical bundle", () => {
     const result = expectMigratedBundle(exportV1Fixture);
 
-    const expected: WorktoolsExportLatest = {
-      version: CURRENT_WORKTOOLS_EXPORT_VERSION,
+    const expected: DeepdashExportLatest = {
+      version: CURRENT_DEEPDASH_EXPORT_VERSION,
       exportedAt: "2026-04-01T12:00:00.000Z",
       worldClock: {
         version: 1,
@@ -116,25 +116,25 @@ describe("dataExport migrations", () => {
   });
 
   it("rejects unsupported bundle versions", () => {
-    const r = tryMigrateWorktoolsBundle({ version: 999, exportedAt: "x" });
+    const r = tryMigrateDeepdashBundle({ version: 999, exportedAt: "x" });
     expect(r.ok).toBe(false);
     if (!r.ok) {
-      expect(formatWorktoolsImportErrorsForUser(r.errors)).toMatch(/bundle version 999/);
+      expect(formatDeepdashImportErrorsForUser(r.errors)).toMatch(/bundle version 999/);
     }
   });
 
   it("rejects non-objects", () => {
-    const a = tryMigrateWorktoolsBundle(null);
+    const a = tryMigrateDeepdashBundle(null);
     expect(a.ok).toBe(false);
     if (!a.ok) expect(a.errors[0]?.message).toMatch(/not a JSON object/);
 
-    const b = tryMigrateWorktoolsBundle("nope" as unknown);
+    const b = tryMigrateDeepdashBundle("nope" as unknown);
     expect(b.ok).toBe(false);
     if (!b.ok) expect(b.errors[0]?.message).toMatch(/not a JSON object/);
   });
 
-  it("tryMigrateWorktoolsBundle runs all slice migrations and aggregates failures", () => {
-    const r = tryMigrateWorktoolsBundle({
+  it("tryMigrateDeepdashBundle runs all slice migrations and aggregates failures", () => {
+    const r = tryMigrateDeepdashBundle({
       version: 1,
       exportedAt: "2026-01-01T00:00:00.000Z",
       worldClock: { version: 99, clocks: [] },
@@ -148,14 +148,14 @@ describe("dataExport migrations", () => {
       const mods = r.errors.map((e) => e.module);
       expect(mods).toContain("worldClock");
       expect(mods).toContain("calculator");
-      const text = formatWorktoolsImportErrorsForUser(r.errors);
+      const text = formatDeepdashImportErrorsForUser(r.errors);
       expect(text).toContain("worldClock");
       expect(text).toContain("calculator");
     }
   });
 
-  it("runWorktoolsJsonImportFromText reports invalid JSON", () => {
-    const r = runWorktoolsJsonImportFromText("{");
+  it("runDeepdashJsonImportFromText reports invalid JSON", () => {
+    const r = runDeepdashJsonImportFromText("{");
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.errors[0]?.phase).toBe("bundle");
@@ -180,14 +180,14 @@ describe("dataExport migrations", () => {
   });
 });
 
-describe("applyWorktoolsImportWithRollback", () => {
+describe("applyDeepdashImportWithRollback", () => {
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
   it("rolls back to the pre-import snapshot when a module import fails", () => {
-    const seed: WorktoolsExportLatest = {
-      version: CURRENT_WORKTOOLS_EXPORT_VERSION,
+    const seed: DeepdashExportLatest = {
+      version: CURRENT_DEEPDASH_EXPORT_VERSION,
       exportedAt: "2020-01-01T00:00:00.000Z",
       worldClock: {
         version: 1,
@@ -206,7 +206,7 @@ describe("applyWorktoolsImportWithRollback", () => {
       calculator: { version: 1, expression: "seed", history: [] },
     };
 
-    const incoming: WorktoolsExportLatest = {
+    const incoming: DeepdashExportLatest = {
       ...seed,
       worldClock: {
         version: 1,
@@ -223,7 +223,7 @@ describe("applyWorktoolsImportWithRollback", () => {
       throw new Error("simulated pomodoro import failure");
     });
 
-    const result = applyWorktoolsImportWithRollback(incoming);
+    const result = applyDeepdashImportWithRollback(incoming);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {

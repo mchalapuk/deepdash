@@ -16,7 +16,7 @@ const inter = localFont({
 const isDev = process.env.NODE_ENV === "development";
 
 export const metadata: Metadata = {
-  title: "Work Tools",
+  title: "Deepdash",
   description: "Local-only productivity dashboard",
 };
 

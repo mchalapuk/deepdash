@@ -4,6 +4,7 @@ import { subscribe } from "valtio/vanilla";
 import { localDayKey } from "@/app/_stores/pomodoroStore";
 import log from "@/lib/logger";
 import {
+  migrateLegacyPersistKeysOnce,
   TODO_AUTO_ROLLOVER_MARKER_PREFIX,
   TODO_DAY_STORAGE_KEY_PREFIX,
 } from "@/lib/persistKeys";
@@ -372,6 +373,7 @@ function moveYesterdayPendingIntoToday(): void {
 
 function loadFromStorage(): void {
   if (typeof window === "undefined") return;
+  migrateLegacyPersistKeysOnce();
   const today = localDayKey();
   try {
     applyLoadedDay(today, readValidatedDayItems(today));
