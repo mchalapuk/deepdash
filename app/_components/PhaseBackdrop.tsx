@@ -1,23 +1,14 @@
 "use client";
 
-import type { PomodoroPhase } from "@/app/_stores/pomodoroStore";
-import { useCurrentPhase } from "@/app/_stores/pomodoroStore";
-
-/** Dark-scheme tints only (ignore system light preference for this backdrop). */
-export const PHASE_TINT: Record<PomodoroPhase, string> = {
-  work: "rgb(44, 21, 31)",
-  shortBreak: "rgb(11, 40, 39)",
-  longBreak: "rgb(32, 27, 50)",
-};
+import { usePhaseBackgroundColor } from "@/lib/layout";
 
 export function PhaseBackdrop({ children }: { children: React.ReactNode }) {
-  const phase = useCurrentPhase();
+  const backgroundColor = usePhaseBackgroundColor();
 
   return (
     <div
       className="h-[100dvh] overflow-hidden"
-      data-phase={phase}
-      style={{ backgroundColor: PHASE_TINT[phase] }}
+      style={{ backgroundColor }}
     >
       {children}
     </div>

@@ -26,7 +26,7 @@ import {
   worldClockActions,
   type WorldClockEntry,
 } from "@/app/_stores/worldClockStore";
-import { getColorFromPhase } from "@/lib/layout";
+import { usePhaseColor, usePhaseBackgroundColor } from "@/lib/layout";
 import {
   formatGmtOffsetLabel,
   formatZonedDayPeriod,
@@ -36,15 +36,14 @@ import {
   wallClockDateForTimeZone,
 } from "@/lib/timezones";
 import "react-clock/dist/Clock.css";
-import { PHASE_TINT } from "./PhaseBackdrop";
 
 const Clock = dynamic(() => import("react-clock"), { ssr: false });
-const CLOCK_SIZE = 110;
+const CLOCK_SIZE = 100;
 const allowedZones = new Set(getSupportedTimeZones());
 
 export function WorldClocks() {
   const m = useWorldClockHeaderMechanics();
-  const phase = useCurrentPhase();
+  const backgroundColor = usePhaseBackgroundColor();
 
   return (
     <ScrollArea
@@ -64,7 +63,7 @@ export function WorldClocks() {
         <Space w={32} />
       </Group>
       <div className="absolute top-0 right-0 w-[80px] h-full" style={{
-        background: `linear-gradient(to left, ${PHASE_TINT[phase]}, transparent)`,
+        background: `linear-gradient(to left, ${backgroundColor}, transparent)`,
       }} />
     </ScrollArea>
   );
@@ -141,7 +140,7 @@ function WorldClockCard({
   const extras = additionalLabelLines(additionalLabel);
 
   return (
-    <Box py="xs" pr="xl">
+    <Box pr="xl">
       <Stack gap="ms">
         <WorldClockAnalog {...{ wall, dayPeriod }} />
         <Stack gap={3}>
@@ -187,10 +186,9 @@ function WorldClockCard({
             <Text
               key={`${line}-${i}`}
               size="xs"
-              c="gray.8"
               ta="center"
               fw={500}
-              style={{ lineHeight: 1.3 }}
+              style={{ lineHeight: 1.3, opacity: 0.25 }}
             >
               ({line})
             </Text>
@@ -212,7 +210,7 @@ type AddClockButtonProps = {
  */
 function AddClockButton({ implicitZoneSet, clocks }: AddClockButtonProps) {
   const pomodoroPhase = useCurrentPhase();
-  const primaryColor = getColorFromPhase(pomodoroPhase);
+  const primaryColor = usePhaseColor();
   const {
     expanded,
     onExpand,

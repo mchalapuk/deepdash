@@ -5,10 +5,10 @@ import {
   Box,
   Checkbox,
   Group,
-  Input,
   ScrollArea,
   Stack,
   Text,
+  Textarea,
   Space,
 } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
@@ -23,11 +23,9 @@ import {
   type KeyboardEvent,
   type RefObject,
 } from "react";
-import { useCurrentPhase } from "@/app/_stores/pomodoroStore";
 import { todoActions, useTodoList, type TodoItem } from "@/app/_stores/todoStore";
-import { getColorFromPhase } from "@/lib/layout";
+import { usePhaseColor, usePhaseBackgroundColor } from "@/lib/layout";
 import log from "@/lib/logger";
-import { PHASE_TINT } from "./PhaseBackdrop";
 
 /** Trailing “add task” field: value, setter, commit. */
 type TodaysTodoDraftApi = {
@@ -39,8 +37,8 @@ type TodaysTodoDraftApi = {
 /** Focus, refs, list edges, and trailing-field length shared by persisted rows and the add row. */
 type TodaysTodoFocusApi = {
   trailingDraftLength: number;
-  setRowInputRef: (itemId: string) => (el: HTMLInputElement | null) => void;
-  setTrailingInputRef: (el: HTMLInputElement | null) => void;
+  setRowInputRef: (itemId: string) => (el: HTMLTextAreaElement | null) => void;
+  setTrailingInputRef: (el: HTMLTextAreaElement | null) => void;
   focusRow: (id: string, pos: number) => void;
   focusTrailing: (pos: number) => void;
   isFirstRow: (rowIndex: number) => boolean;
@@ -49,13 +47,12 @@ type TodaysTodoFocusApi = {
 
 export function TodaysTodo() {
   const m = useTodaysTodoMechanics();
-  const phase = useCurrentPhase();
+  const backgroundColor = usePhaseBackgroundColor();
 
   return (
     <Stack
       gap={0}
       w="100%"
-      pt="xs"
       h="100%"
       className="min-h-0"
       style={{ overflow: "hidden" }}
@@ -92,7 +89,7 @@ export function TodaysTodo() {
         </Stack>
         <Space h={28} ref={m.lastRowScrollRef} />
         <div className="absolute bottom-0 left-0 w-full h-[40px]" style={{
-          background: `linear-gradient(to top, ${PHASE_TINT[phase]}, transparent)`,
+          background: `linear-gradient(to top, ${backgroundColor}, transparent)`,
         }} />
       </ScrollArea>
       <Box style={{ flexShrink: 0 }}>
@@ -134,7 +131,7 @@ function TodoPersistedRow({
   });
 
   return (
-    <Group wrap="nowrap" gap={7} align="center" w="100%" pl={6}>
+    <Group wrap="nowrap" gap={7} align="flex-start" w="100%" pl={6}>
       <Checkbox
         checked={done}
         onChange={() => todoActions.toggleDone(id)}
@@ -143,25 +140,35 @@ function TodoPersistedRow({
         color="gray.7"
         opacity={0.9}
         pos="relative"
-        top={3.5}
+        top={9}
       />
-      <Input
+      <Textarea
         ref={composeInputRef}
         flex={1}
         size="sm"
-        h="30px"
+        minRows={1}
+        autosize
+        maxRows={12}
+        mb={-6}
         value={text}
         onChange={onChange}
         onBlur={onBlurPersisted}
         onKeyDown={onKeyDown}
         variant="unstyled"
+        resize="none"
         styles={{
-          input: done
-            ? {
-                textDecoration: "line-through",
-                opacity: 0.55,
-              }
-            : undefined,
+          input: {
+            paddingTop: "2px",
+            paddingBottom: "2px",
+            lineHeight: 2,
+            ...(done
+              ? {
+                  textDecoration: "line-through",
+                  opacity: 0.55,
+                }
+              : {}
+            ),
+          },
         }}
       />
     </Group>
@@ -179,7 +186,7 @@ function TodoTrailingRow({
   lastItem,
   focusAPI,
 }: TodoTrailingRowProps) {
-  const phase = useCurrentPhase();
+  const color = usePhaseColor();
   const {
     bindRef,
     onBlurTrailing,
@@ -193,30 +200,45 @@ function TodoTrailingRow({
   });
 
   return (
-    <Group wrap="nowrap" gap={5.5} align="center" w="100%" pl={3.5}>
+    <Group wrap="nowrap" gap={5.5} align="flex-start" w="100%" pl={3.5} pos="relative">
       <ActionIcon
         variant="light"
-        color={getColorFromPhase(phase)}
+        color={color}
         opacity={0.95}
         size="sm"
         aria-label="Add task"
-        mt={1.5}
-        mr={-2}
         radius="sm"
         onClick={onAddButtonClick}
+        style={{
+          position: "absolute",
+          bottom: "10px",
+          left: "6px",
+        }}
       >
         <IconPlus size={12} stroke={3} />
       </ActionIcon>
-      <Input
+      <Textarea
         ref={bindRef}
         flex={1}
         size="sm"
+        minRows={1}
+        autosize
+        maxRows={8}
         placeholder="Add a task…"
         value={draftAPI.draft}
         variant="unstyled"
+        resize="none"
+        pl={28}
         onChange={onChange}
         onBlur={onBlurTrailing}
         onKeyDown={onKeyDown}
+        styles={{
+          input: {
+            paddingTop: 0,
+            paddingBottom: 0,
+            lineHeight: 2,
+          },
+        }}
       />
     </Group>
   );
@@ -233,8 +255,8 @@ type TodaysTodoMechanics = {
 function useTodaysTodoMechanics(): TodaysTodoMechanics {
   const { hydrated, items } = useTodoList();
   const [trailingDraft, setTrailingDraft] = useState("");
-  const trailingRef = useRef<HTMLInputElement | null>(null);
-  const rowRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const trailingRef = useRef<HTMLTextAreaElement | null>(null);
+  const rowRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const lastRowScrollRef = useRef<HTMLDivElement | null>(null);
   const scrollBaselineLen = useRef<number | null>(null);
   const scrollBaselineLastId = useRef<string | undefined>(undefined);
@@ -312,13 +334,13 @@ function useTodaysTodoMechanics(): TodaysTodoMechanics {
   );
 
   const setRowInputRef = useCallback((itemId: string) => {
-    return (el: HTMLInputElement | null) => {
+    return (el: HTMLTextAreaElement | null) => {
       if (el) rowRefs.current[itemId] = el;
       else delete rowRefs.current[itemId];
     };
   }, []);
 
-  const setTrailingInputRef = useCallback((el: HTMLInputElement | null) => {
+  const setTrailingInputRef = useCallback((el: HTMLTextAreaElement | null) => {
     trailingRef.current = el;
   }, []);
 
@@ -375,12 +397,12 @@ function usePersistedTodoRowInput({
   items,
   focusAPI,
 }: UsePersistedTodoRowInputArgs): {
-  composeInputRef: (el: HTMLInputElement | null) => void;
+  composeInputRef: (el: HTMLTextAreaElement | null) => void;
   onBlurPersisted: () => void;
-  onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
-  onChange: (ev: ChangeEvent<HTMLInputElement>) => void;
+  onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
+  onChange: (ev: ChangeEvent<HTMLTextAreaElement>) => void;
 } {
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const selectionAfterChangeRef = useRef<{ start: number; end: number } | null>(
     null,
   );
@@ -404,7 +426,7 @@ function usePersistedTodoRowInput({
   }, [text, id]);
 
   const composeInputRef = useCallback(
-    (el: HTMLInputElement | null) => {
+    (el: HTMLTextAreaElement | null) => {
       inputRef.current = el;
       setRowInputRef(id)(el);
     },
@@ -419,7 +441,7 @@ function usePersistedTodoRowInput({
   }, [id]);
 
   const onChange = useCallback(
-    (ev: ChangeEvent<HTMLInputElement>) => {
+    (ev: ChangeEvent<HTMLTextAreaElement>) => {
       const t = ev.currentTarget;
       selectionAfterChangeRef.current = {
         start: t.selectionStart ?? 0,
@@ -431,7 +453,7 @@ function usePersistedTodoRowInput({
   );
 
   const onKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLInputElement>) => {
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
       const isFirst = focusAPI.isFirstRow(index);
       const isLast = focusAPI.isLastRow(index);
       const el = e.currentTarget;
@@ -487,7 +509,7 @@ function usePersistedTodoRowInput({
         return;
       }
 
-      if (e.key === "Enter") {
+      if (isModEnter(e)) {
         e.preventDefault();
         if (start === 0 && collapsed) {
           const newId = todoActions.insertEmptyAt(index);
@@ -572,14 +594,14 @@ function useTrailingTodoRowInput({
   lastItem,
   focusAPI,
 }: UseTrailingTodoRowInputArgs): {
-  bindRef: (el: HTMLInputElement | null) => void;
+  bindRef: (el: HTMLTextAreaElement | null) => void;
   onBlurTrailing: () => void;
-  onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
-  onChange: (ev: ChangeEvent<HTMLInputElement>) => void;
+  onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
+  onChange: (ev: ChangeEvent<HTMLTextAreaElement>) => void;
   onAddButtonClick: () => void;
 } {
   const { draft, setDraft, commitTrailing } = draftAPI;
-  const innerRef = useRef<HTMLInputElement | null>(null);
+  const innerRef = useRef<HTMLTextAreaElement | null>(null);
   const trailingSelectionRef = useRef<{ start: number; end: number } | null>(
     null,
   );
@@ -605,7 +627,7 @@ function useTrailingTodoRowInput({
   }, [draft]);
 
   const bindRef = useCallback(
-    (el: HTMLInputElement | null) => {
+    (el: HTMLTextAreaElement | null) => {
       innerRef.current = el;
       setTrailingInputRef(el);
     },
@@ -619,7 +641,7 @@ function useTrailingTodoRowInput({
   }, [commitTrailing]);
 
   const onChange = useCallback(
-    (ev: ChangeEvent<HTMLInputElement>) => {
+    (ev: ChangeEvent<HTMLTextAreaElement>) => {
       const t = ev.currentTarget;
       trailingSelectionRef.current = {
         start: t.selectionStart ?? 0,
@@ -631,7 +653,7 @@ function useTrailingTodoRowInput({
   );
 
   const onKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLInputElement>) => {
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
       const el = e.currentTarget;
       const value = el.value;
       const start = el.selectionStart ?? 0;
@@ -647,7 +669,7 @@ function useTrailingTodoRowInput({
         return;
       }
 
-      if (e.key === "Enter") {
+      if (isModEnter(e)) {
         e.preventDefault();
         if (value.trim() === "") return;
         commitTrailing(value);
@@ -695,7 +717,12 @@ function useTrailingTodoRowInput({
   };
 }
 
-/** Same visual column when moving vertically between single-line fields. */
+/** Ctrl+Enter / Cmd+Enter — plain Enter inserts a newline in textareas. */
+function isModEnter(e: KeyboardEvent): boolean {
+  return e.key === "Enter" && (e.ctrlKey || e.metaKey);
+}
+
+/** Same visual column when moving vertically between fields. */
 function clampColumn(caret: number, lineLength: number): number {
   return Math.max(0, Math.min(caret, lineLength));
 }

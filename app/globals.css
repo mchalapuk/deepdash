@@ -28,6 +28,7 @@ body {
 .react-clock {
   background: var(--mantine-color-gray-3);
   border-radius: 10000px;
+  opacity: 0.85;
 }
 
 .tick-credits {
@@ -40,7 +41,7 @@ body {
 }
 
 .tick-flip-card, .tick-flip-spacer {
-  width: 76px;
-  max-width: 76px;
+  width: 80px;
+  max-width: 80px;
   overflow: hidden;
 }

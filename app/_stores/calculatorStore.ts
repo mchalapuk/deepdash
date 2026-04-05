@@ -61,9 +61,7 @@ export function useCalculatorReadouts(): {
 }
 
 export function useCalculatorHistory(): readonly CalculatorHistoryEntry[] {
-  const { nextId, history } = useSnapshot(calculatorStore);
-  const lastEntry = history[0];
-  return lastEntry && lastEntry.id === nextId ? history.slice(1) : history;
+  return useSnapshot(calculatorStore).history;
 }
 
 export const calculatorActions = {

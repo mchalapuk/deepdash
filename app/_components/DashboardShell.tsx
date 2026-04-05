@@ -31,31 +31,31 @@ export function DashboardShell() {
     >
       <Grid columns={12} columnGap="xl" rowGap={0}>
         <GridCol span={12}>
-          <Box ref={headerRef} pt={52} pb={28}>
+          <Box ref={headerRef} pt={42} pb={4}>
             <WorldClocks />
           </Box>
         </GridCol>
         <GridCol span={5} style={bodyColStyle}>
           <Stack
-            gap={42}
+            gap={28}
             h="100%"
-            pb={28}
+            pb={26}
             className="min-h-0"
             style={{ overflow: "hidden" }}
           >
-            <Box style={{ flexShrink: 0 }}>
+            <Box style={{ flexShrink: 0 }} pt={28}>
               <Pomodoro />
             </Box>
             <Calculator />
           </Stack>
         </GridCol>
         <GridCol span={4} style={bodyColStyle}>
-          <Box h="100%" className="min-h-0" pb={28} style={{ overflow: "hidden" }}>
+          <Box h="100%" className="min-h-0" pb={36} style={{ overflow: "hidden" }}>
             <TodaysWork />
           </Box>
         </GridCol>
         <GridCol component="aside" span={3} style={bodyColStyle}>
-          <Box h="100%" className="min-h-0" pb={28} style={{ overflow: "hidden" }}>
+          <Box h="100%" className="min-h-0" pb={38} style={{ overflow: "hidden" }}>
             <TodaysTodo />
           </Box>
         </GridCol>

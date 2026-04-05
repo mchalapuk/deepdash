@@ -16,7 +16,7 @@ import {
 } from "@tabler/icons-react";
 import { useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
-import { getColorFromPhase, type PomodoroPhase } from "@/lib/layout";
+import { usePhaseColor, type PomodoroPhase } from "@/lib/layout";
 import log from "@/lib/logger";
 import {
   pomodoroActions,
@@ -43,16 +43,15 @@ export function Pomodoro() {
 
   return (
     <Paper
-      pb={42}
+      pb={32}
       w="100%"
       radius="lg"
       style={{
-        backgroundColor: "rgba(0, 0, 0, 0.2)",
-        boxShadow: "inset 0 0 10px 0 rgba(10, 0, 0, 0.4), inset 0 0 2px 0 rgba(0, 0, 0, 0.8)",
+        backgroundColor: "rgba(0, 0, 0, 0.3)",
         overflow: "hidden",
       }}
     >
-      <Stack gap={36} align="center">
+      <Stack gap={22} align="center">
         <TabPanel {...{ phase, running }}/>
         <Countdown {...{ running }}/>
         <PrimaryButton {...{ phase, running, paused }}/>
@@ -121,11 +120,11 @@ function Countdown({ running }: { running: boolean }) {
       </Box>
 
       <Box
-        className="flex justify-center min-w-0 opacity-80 pt-2"
+        className="flex justify-center min-w-0 opacity-75 pt-0.5"
         style={{ flex: "0 1 auto", fontSize: "clamp(5rem, 8vw, 3.25rem)" }}
       >
         <div role="timer" aria-live="polite" aria-atomic="true">
-          <FlipTimer secondsRemaining={secondsRemaining} fontSize="4.2rem"/>
+          <FlipTimer secondsRemaining={secondsRemaining} fontSize="4.8rem"/>
         </div>
       </Box>
 
@@ -134,7 +133,7 @@ function Countdown({ running }: { running: boolean }) {
         className="flex justify-center"
       >
         {showSteppers ? (
-          <Stack gap={2} align="center" ml="-5rem">
+          <Stack gap={2} align="center" ml="-3.5rem">
             <ActionIcon
               variant="transparent"
               size="lg"
@@ -174,6 +173,8 @@ function PrimaryButton({ phase, running, paused }: { phase: PomodoroPhase, runni
       ? "Resume"
       : "Start";
 
+  const color = usePhaseColor();
+
   const handlePrimaryClick = () => {
     if (running) {
       if (expired) {
@@ -212,8 +213,8 @@ function PrimaryButton({ phase, running, paused }: { phase: PomodoroPhase, runni
         px="xl"
         variant="filled"
         onClick={handlePrimaryClick}
-        style={{ flexShrink: 0, width: "220px", opacity: 0.92 }}
-        color={getColorFromPhase(phase)}
+        style={{ flexShrink: 0, width: "220px", opacity: .92 }}
+        color={color}
       >
         {primaryButtonText}
       </Button>

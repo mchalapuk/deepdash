@@ -1,18 +1,16 @@
 "use client";
 
-import { ScrollArea, Stack, Text, Group, Paper, Space } from "@mantine/core";
-import { useLayoutEffect, useState } from "react";
+import { ScrollArea, Stack, Text, Group, Paper, Box, Space } from "@mantine/core";
+import { useLayoutEffect, useRef, useState } from "react";
 import { type Snapshot } from "valtio";
 import {
   type ActivePhaseRun,
   type PomodoroLoggedPhase,
   type PomodoroPauseSpan,
-  useCurrentPhase,
   useTodayPomodoroDaySlice,
   useTodayWorkMsDisplay,
 } from "@/app/_stores/pomodoroStore";
-
-import { PHASE_TINT } from "./PhaseBackdrop";
+import { usePhaseBackgroundColor } from "@/lib/layout";
 
 export function TodaysWork() {
   const totalMs = useTodayWorkMsDisplay();
@@ -20,53 +18,75 @@ export function TodaysWork() {
   const live = activePhaseRun?.phase === "work";
   const nowMs = useLiveNowMs(live);
   const rows = buildTodayWorkRows(todayEntries, activePhaseRun, nowMs);
-  const phase = useCurrentPhase();
-  
+  const backgroundColor = usePhaseBackgroundColor();
+  const workLogViewportRef = useRef<HTMLDivElement | null>(null);
+  const prevWorkPhaseStartRef = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const startMs =
+      activePhaseRun?.phase === "work" ? activePhaseRun.phaseStartedAtMs : null;
+    const prev = prevWorkPhaseStartRef.current;
+    prevWorkPhaseStartRef.current = startMs;
+    if (startMs == null || startMs === prev) return;
+    workLogViewportRef.current?.scrollTo({ top: 0 });
+  }, [activePhaseRun?.phase, activePhaseRun?.phaseStartedAtMs]);
+
   return (
-    <Stack gap="md" h="100%" pt="xs" style={{ minHeight: 0, overflow: "hidden" }}>
-      <Stack gap={4} pl={6} style={{ flexShrink: 0 }}>
-        <Text size="xs" c="dimmed">
-          Today&apos;s work
-        </Text>
-        <Text size="xl" fw={500}>
-          {formatDurationMs(totalMs)}
-        </Text>
-      </Stack>
-      {rows.length === 0 ? (
-        <Text c="dimmed" size="sm">
-          No pomodoro sessions logged today.
-        </Text>
-      ) : (
-        <Stack gap="xs" style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-          <Group w="100%" wrap="nowrap" pl={12} pr={30} style={{ flexShrink: 0 }}>
-            <Text size="xs" c="dimmed" w="20%" miw="60px">
-              Session
-            </Text>
-            <Text size="xs" c="dimmed" style={{ flexGrow: 1, whiteSpace: "nowrap" }}>
-              Start - Stop
-            </Text>
-            <Text size="xs" c="dimmed" w="20%" miw="60px">
-              Duration
-            </Text>
-          </Group>
-          <ScrollArea
-            pr={18}
-            pos="relative"
-            style={{ flex: 1, minHeight: 0 }}
-            styles={{ thumb: { backgroundColor: "green.8", opacity: 0.5 } }}
-          >
+    <Stack gap={0} h="100%" style={{ minHeight: 0, overflow: "hidden" }}>
+      <Stack gap={12} style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+        <Group w="100%" wrap="nowrap" pl={12} pr={30} style={{ flexShrink: 0 }}>
+          <Text size="xs" c="dimmed" w="20%" miw="60px">
+            Session
+          </Text>
+          <Text size="xs" c="dimmed" style={{ flexGrow: 1, whiteSpace: "nowrap" }}>
+            Start - Stop
+          </Text>
+          <Text size="xs" c="dimmed" w="25%" miw="60px">
+            Duration
+          </Text>
+        </Group>
+        <ScrollArea
+          viewportRef={workLogViewportRef}
+          pr={18}
+          pos="relative"
+          style={{ flex: 1, minHeight: 0 }}
+          styles={{ thumb: { backgroundColor: "green.8", opacity: 0.5 } }}
+        >
+          {rows.length === 0 ? (
+            <Paper w="100%" px={12} py={12} style={{ backgroundColor: "rgba(0, 0, 0, 0.6)", opacity: 0.5 }}>
+              <Stack component="li" gap="xs" w="100%">
+                <SessionRow
+                  session={`# 1`}
+                  span="No started yet"
+                  duration="0s"
+                />
+              </Stack>
+            </Paper>
+          ) : (
             <Stack component="ul" gap="xs" style={{ listStyle: "none", margin: 0, padding: 0 }}>
               {rows.reverse().map((row, i) => (
                 <SessionBlock key={row.key} index={rows.length - i} row={row} />
               ))}
             </Stack>
-            <Space h={28} />
-            <div className="absolute bottom-0 left-0 w-full h-[40px]" style={{
-              background: `linear-gradient(to top, ${PHASE_TINT[phase]}, transparent)`,
-            }} />
-          </ScrollArea>
-        </Stack>
-      )}
+          )}
+          <Space h={10} />
+          <div className="absolute bottom-0 left-0 w-full h-[40px]" style={{
+            background: `linear-gradient(to top, ${backgroundColor}, transparent)`,
+          }} />
+        </ScrollArea>
+      </Stack>
+      <Box pr={18}>
+        <Paper w="100%" px={12} py={9} style={{ backgroundColor: "rgba(0, 0, 0, 0.9)", opacity: 0.78 }}>
+          <Group gap={4} style={{ flexShrink: 0 }} wrap="nowrap" align="end" pb={2}>
+            <Text size="sm" c="dimmed" w="73.5%" pb={1}>
+              Today&apos;s work time:
+            </Text>
+            <Text size="md">
+              {formatDurationMs(totalMs)}
+            </Text>
+          </Group>
+        </Paper>
+      </Box>
     </Stack>
   );
 }
@@ -88,7 +108,7 @@ function SessionBlock({ index, row }: { index: number; row: TodayRow }) {
     const e = row.entry;
     const focusMs = workFocusMsFromEntry(e);
     return (
-      <Paper bg="black" w="100%" px={12} py={12} opacity={0.3}>
+      <Paper w="100%" px={12} py={12} style={{ backgroundColor: "rgba(0, 0, 0, 0.6)", opacity: 0.5 }}>
         <Stack component="li" gap="xs" w="100%">
           <SessionRow
             session={`# ${index}`}
@@ -106,7 +126,7 @@ function SessionBlock({ index, row }: { index: number; row: TodayRow }) {
   const focusMs = workFocusMsActive(run, nowMs);
 
   return (
-    <Paper bg="black" w="100%" px={12} py={12} opacity={0.7}>
+    <Paper w="100%" px={12} py={12} style={{ backgroundColor: "rgba(0, 0, 0, 0.6)", opacity: 0.5 }}>
       <Stack component="li" gap="xs" w="100%">
         <SessionRow
           session={`# ${index}`}
@@ -160,7 +180,7 @@ function SessionRow({ session, span, duration, fontSize = "sm", color = "foregro
       <Text size={fontSize} fw={500} style={{ flexGrow: 1, whiteSpace: "nowrap" }} c={color}>
         {span}
       </Text>
-      <Text size={fontSize} fw={500} w="20%" miw="60px" c={color}>
+      <Text size={fontSize} fw={500} w="25%" miw="60px" c={color}>
         {duration}
       </Text>
     </Group>
