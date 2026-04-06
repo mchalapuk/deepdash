@@ -15,7 +15,6 @@ import {
   IconPlayerSkipForward,
 } from "@tabler/icons-react";
 import { useEffect, useRef } from "react";
-import dynamic from "next/dynamic";
 import { usePhaseColor, type PomodoroPhase } from "@/lib/layout";
 import log from "@/lib/logger";
 import {
@@ -30,20 +29,17 @@ import {
   useSecondsRemaining,
 } from "@/app/_stores/pomodoroStore";
 
+import { FlipTimer } from "./FlipTimer";
+
 const POMODORO_INTRO_WAV = "/PomodoroChime_intro.wav";
 const POMODORO_MAIN_WAV = "/PomodoroChime_main.wav";
-
-const FlipTimer = dynamic(
-  () => import("./FlipTimer").then((mod) => mod.FlipTimer),
-  { ssr: false },
-);
 
 export function Pomodoro() {
   const [phase, running, paused] = usePomodoroMechanics();
 
   return (
     <Paper
-      pb={32}
+      pb={30}
       w="100%"
       radius="lg"
       style={{
@@ -51,7 +47,7 @@ export function Pomodoro() {
         overflow: "hidden",
       }}
     >
-      <Stack gap={22} align="center">
+      <Stack gap={23} align="center">
         <TabPanel {...{ phase, running }}/>
         <Countdown {...{ running }}/>
         <PrimaryButton {...{ phase, running, paused }}/>
@@ -120,11 +116,11 @@ function Countdown({ running }: { running: boolean }) {
       </Box>
 
       <Box
-        className="flex justify-center min-w-0 opacity-75 pt-0.5"
-        style={{ flex: "0 1 auto", fontSize: "clamp(5rem, 8vw, 3.25rem)" }}
+        className="flex justify-center min-w-0 opacity-75"
+        style={{ flex: "0 1 auto", fontSize: "5.36rem" }}
       >
-        <div role="timer" aria-live="polite" aria-atomic="true">
-          <FlipTimer secondsRemaining={secondsRemaining} fontSize="4.8rem"/>
+        <div role="timer" aria-live="polite" aria-atomic="true" className="w-[5.6em] h-[1.4em]">
+          <FlipTimer secondsRemaining={secondsRemaining} />
         </div>
       </Box>
 

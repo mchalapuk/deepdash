@@ -64,6 +64,10 @@ export function useCalculatorHistory(): readonly CalculatorHistoryEntry[] {
   return useSnapshot(calculatorStore).history;
 }
 
+export function useCalculatorHydrated(): boolean {
+  return useSnapshot(calculatorStore).hydrated;
+}
+
 export const calculatorActions = {
   init: function init(): () => void {
     loadFromStorage();

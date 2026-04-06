@@ -1,10 +1,21 @@
 "use client";
 
-import { Box, Group, Input, ScrollArea, Stack, Text, Table } from "@mantine/core";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import {
+  Box,
+  Group,
+  Input,
+  ScrollArea,
+  Skeleton,
+  Stack,
+  Text,
+  Table,
+  VisuallyHidden,
+} from "@mantine/core";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import {
   calculatorActions,
   useCalculatorExpression,
+  useCalculatorHydrated,
   useCalculatorHistory,
   useCalculatorReadouts,
 } from "@/app/_stores/calculatorStore";
@@ -16,7 +27,11 @@ export function Calculator() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <Stack gap={0} className="min-h-0 w-full h-full overflow-hidden mb-[-8px]">
+    <Stack
+      gap={0}
+      className="min-h-0 w-full mb-[-8px] flex-1 overflow-hidden"
+      style={{ flex: 1, minHeight: 0 }}
+    >
       <CalculatorHistory {...{ inputRef }} />
       <CalculatorPrompt {...{ inputRef }} />
     </Stack>
@@ -112,25 +127,17 @@ function CalculatorPrompt({ inputRef }: { inputRef: React.RefObject<HTMLInputEle
 
 function CalculatorHistory({ inputRef }: { inputRef: React.RefObject<HTMLInputElement | null> }) {
   const history = useCalculatorHistory();
+  const hydrated = useCalculatorHydrated();
   const backgroundColor = usePhaseBackgroundColor();
   const color = usePhaseColor();
   const historyViewportRef = useRef<HTMLDivElement | null>(null);
-  /** Newest-first buffer: length is capped, so use head id to detect a real append. */
-  const prevNewestHistoryIdRef = useRef<string | null>(null);
 
-  useLayoutEffect(() => {
-    const newestId = history[0]?.id ?? null;
-    const prev = prevNewestHistoryIdRef.current;
-    prevNewestHistoryIdRef.current = newestId;
-    if (prev === null) return;
-    if (newestId == null || newestId === prev) return;
-    const vp = historyViewportRef.current;
-    if (!vp) return;
-    vp.scrollTop = vp.scrollHeight;
-  }, [history.length, history[0]?.id]);
+  useScrollCalculatorHistoryToBottom(hydrated ? history : [], historyViewportRef);
 
   return (
     <ScrollArea
+      flex={1}
+      className="min-h-0"
       viewportRef={historyViewportRef}
       type="hover"
       scrollbars="y"
@@ -141,7 +148,9 @@ function CalculatorHistory({ inputRef }: { inputRef: React.RefObject<HTMLInputEl
         thumb: { backgroundColor: "green.8", opacity: 0.5 }
       }}
     >
-      { history.length > 0 ? (
+      {!hydrated ? (
+        <CalculatorHistorySkeleton />
+      ) : history.length > 0 ? (
         <Table
           m={0}
           p={0}
@@ -179,4 +188,95 @@ function CalculatorHistory({ inputRef }: { inputRef: React.RefObject<HTMLInputEl
       }} />
     </ScrollArea>
   );
+}
+
+/** Same table shape as hydrated history rows while calculator storage loads. */
+function CalculatorHistorySkeleton() {
+  const exprWidthsPx = [76, 62, 118, 55, 70, 76, 162, 88, 55, 70, 76, 122, 88, 55, 70] as const;
+  const resultWidthsPx = [56, 72, 48, 64, 56, 72, 48, 64, 56, 72, 48, 64, 56, 72, 48] as const;
+
+  return (
+    <Box role="status" aria-live="polite" aria-busy="true" opacity={0.5}>
+      <VisuallyHidden>Loading calculation history</VisuallyHidden>
+      <Table
+        m={0}
+        p={0}
+        style={{ listStyle: "none" }}
+        aria-label="Calculation history, newest first"
+        withRowBorders={false}
+      >
+        <Table.Tbody>
+          {exprWidthsPx.map((ew, i) => (
+            <Table.Tr key={i}>
+              <Table.Td className="whitespace-nowrap text-ellipsis overflow-hidden" py={1} px={6}>
+                <Skeleton height={18} radius="sm" width={`${ew}px`} />
+              </Table.Td>
+              <Table.Td className="w-[9px]" px={0} py={1}>
+                <Text component="span" size="sm">
+                  {" = "}
+                </Text>
+              </Table.Td>
+              <Table.Td w="100%" py={1} px={6}>
+                <Skeleton height={18} radius="sm" width={resultWidthsPx[i]} />
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </Box>
+  );
+}
+
+/** History is newest-first; the table renders oldest→newest, so the viewport bottom shows latest rows. */
+function useScrollCalculatorHistoryToBottom(
+  history: readonly { id: string }[],
+  viewportRef: RefObject<HTMLDivElement | null>,
+): void {
+  const prevNewestIdRef = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    const newestId = history[0]?.id ?? null;
+    if (history.length === 0) {
+      prevNewestIdRef.current = null;
+      return;
+    }
+    const prev = prevNewestIdRef.current;
+    if (newestId === prev) return;
+    prevNewestIdRef.current = newestId;
+
+    const nudge = (): void => {
+      const vp = viewportRef.current;
+      if (!vp) return;
+      vp.scrollTop = vp.scrollHeight;
+    };
+    nudge();
+    requestAnimationFrame(() => {
+      nudge();
+      requestAnimationFrame(nudge);
+    });
+  }, [history.length, history[0]?.id, viewportRef]);
+
+  useEffect(() => {
+    if (history.length === 0) return;
+    const vp = viewportRef.current;
+    if (!vp) return;
+
+    const nudge = (): void => {
+      const el = viewportRef.current;
+      if (!el) return;
+      el.scrollTop = el.scrollHeight;
+    };
+
+    const ro = new ResizeObserver(nudge);
+    ro.observe(vp);
+    nudge();
+    const t = window.setTimeout(() => {
+      ro.disconnect();
+    }, 600);
+
+    return () => {
+      clearTimeout(t);
+      ro.disconnect();
+    };
+  }, [history.length, history[0]?.id, viewportRef]);
 }

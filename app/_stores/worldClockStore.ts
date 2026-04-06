@@ -34,6 +34,10 @@ export function useWorldClocks(): readonly Snapshot<WorldClockEntry>[] {
   return useSnapshot(worldClockStore).clocks;
 }
 
+export function useWorldClockHydrated(): boolean {
+  return useSnapshot(worldClockStore).hydrated;
+}
+
 export const worldClockActions = {
   init: function init(): () => void {
     loadFromStorage();

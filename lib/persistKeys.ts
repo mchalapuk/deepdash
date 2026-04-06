@@ -11,6 +11,9 @@ export const TODO_DAY_STORAGE_KEY_PREFIX = "deepdash.todo.day.";
 /** Idempotency markers for auto-rollover: `{prefix}{yesterdayKey}` → today’s day key. */
 export const TODO_AUTO_ROLLOVER_MARKER_PREFIX = "deepdash.todo.autoRolloverFrom.";
 
+/** Set after first-run demo data is skipped (existing user) or applied (blank profile). */
+export const FIRST_RUN_SEED_HANDLED_KEY = "deepdash.firstRunSeedHandled.v1";
+
 let legacyPersistMigrationDone = false;
 
 /**

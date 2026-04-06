@@ -2,7 +2,8 @@
 
 import { MantineProvider, createTheme } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
-import { useEffect, useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo } from "react";
+import { maybeApplyFirstRunSeedBundle } from "@/lib/firstRunSeed";
 import log from "@/lib/logger";
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
@@ -14,6 +15,10 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       }),
     [],
   );
+
+  useLayoutEffect(() => {
+    maybeApplyFirstRunSeedBundle();
+  }, []);
 
   useEffect(() => {
     if (process.env.NODE_ENV !== "production") return;

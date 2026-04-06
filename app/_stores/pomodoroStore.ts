@@ -217,6 +217,10 @@ export function useTodayPomodoroDaySlice(): {
   };
 }
 
+export function usePomodoroHydrated(): boolean {
+  return useSnapshot(pomodoroStore).hydrated;
+}
+
 export type PomodoroInitOptions = {
   /** Called once per run when the wall-clock deadline is crossed (phase stays active until `nextPhase`). */
   onPhaseDeadlineCrossed?: (completedPhase: PomodoroPhase) => void;

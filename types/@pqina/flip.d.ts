@@ -9,5 +9,6 @@ declare module "@pqina/flip" {
       destroy: (rootElement: HTMLElement) => void;
     };
   };
+  export type TickType = typeof Tick;
   export default Tick;
 }

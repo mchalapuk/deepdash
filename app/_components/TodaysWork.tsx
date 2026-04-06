@@ -1,18 +1,30 @@
 "use client";
 
-import { ScrollArea, Stack, Text, Group, Paper, Box, Space } from "@mantine/core";
+import {
+  Box,
+  Group,
+  Paper,
+  ScrollArea,
+  Skeleton,
+  Space,
+  Stack,
+  Text,
+  VisuallyHidden,
+} from "@mantine/core";
 import { useLayoutEffect, useRef, useState } from "react";
 import { type Snapshot } from "valtio";
 import {
   type ActivePhaseRun,
   type PomodoroLoggedPhase,
   type PomodoroPauseSpan,
+  usePomodoroHydrated,
   useTodayPomodoroDaySlice,
   useTodayWorkMsDisplay,
 } from "@/app/_stores/pomodoroStore";
 import { usePhaseBackgroundColor } from "@/lib/layout";
 
 export function TodaysWork() {
+  const hydrated = usePomodoroHydrated();
   const totalMs = useTodayWorkMsDisplay();
   const { todayEntries, activePhaseRun } = useTodayPomodoroDaySlice();
   const live = activePhaseRun?.phase === "work";
@@ -52,7 +64,9 @@ export function TodaysWork() {
           style={{ flex: 1, minHeight: 0 }}
           styles={{ thumb: { backgroundColor: "green.8", opacity: 0.5 } }}
         >
-          {rows.length === 0 ? (
+          {!hydrated ? (
+            <TodaysWorkSessionListSkeleton />
+          ) : rows.length === 0 ? (
             <Paper w="100%" px={12} py={12} style={{ backgroundColor: "rgba(0, 0, 0, 0.6)", opacity: 0.5 }}>
               <Stack component="li" gap="xs" w="100%">
                 <SessionRow
@@ -81,13 +95,47 @@ export function TodaysWork() {
             <Text size="sm" c="dimmed" w="73.5%" pb={1}>
               Today&apos;s work time:
             </Text>
-            <Text size="md">
-              {formatDurationMs(totalMs)}
-            </Text>
+            <Text size="md">{hydrated ? formatDurationMs(totalMs): " "}</Text>
           </Group>
         </Paper>
       </Box>
     </Stack>
+  );
+}
+
+/** Mimics {@link SessionBlock} / {@link SessionRow} layout while pomodoro storage hydrates. */
+function TodaysWorkSessionListSkeleton() {
+  const midWidths = ["62%", "78%", "55%"] as const;
+
+  return (
+    <Box role="status" aria-live="polite" aria-busy="true">
+      <VisuallyHidden>Loading work sessions</VisuallyHidden>
+      <Stack
+        component="ul"
+        gap="xs"
+        aria-hidden
+        style={{ listStyle: "none", margin: 0, padding: 0 }}
+      >
+        {midWidths.map((mw, i) => (
+          <Paper
+            key={i}
+            component="li"
+            w="100%"
+            px={13}
+            py={13}
+            style={{ backgroundColor: "rgba(0, 0, 0, 0.6)", opacity: 0.5 }}
+          >
+            <Group w="100%" wrap="nowrap" align="center">
+              <Skeleton height={16} w="20%" miw={60} radius="sm" opacity={0.5} />
+              <Box flex={1} miw={0} style={{ minWidth: 0 }}>
+                <Skeleton height={16} width={mw} radius="sm" opacity={0.5} />
+              </Box>
+              <Skeleton height={16} w="25%" miw={60} radius="sm" opacity={0.5} />
+            </Group>
+          </Paper>
+        ))}
+      </Stack>
+    </Box>
   );
 }
 

@@ -5,10 +5,12 @@ import {
   Autocomplete,
   Box,
   Group,
+  Skeleton,
   Stack,
   Text,
   ScrollArea,
   Space,
+  VisuallyHidden,
 } from "@mantine/core";
 import { IconPlus, IconTrash, IconX } from "@tabler/icons-react";
 import {
@@ -22,6 +24,7 @@ import {
 import dynamic from "next/dynamic";
 import { useCurrentPhase } from "@/app/_stores/pomodoroStore";
 import {
+  useWorldClockHydrated,
   useWorldClocks,
   worldClockActions,
   type WorldClockEntry,
@@ -50,18 +53,15 @@ export function WorldClocks() {
       component="header"
       pos="relative"
       w="100%"
+      h="173px"
       styles={{ thumb: { backgroundColor: "green.8", opacity: 0.5 } }}
       scrollbars="x"
     >
-      <Group
-        wrap="nowrap"
-        align="flex-start"
-        gap="md"
-        style={{ width: "max-content", paddingBottom: 4 }}
-      >
-        {m.envTzReady ? <WorldClockPanel {...m} /> : null}
-        <Space w={32} />
-      </Group>
+      {m.headerReady ? (
+        <WorldClockPanel {...m} />
+      ) : (
+        <WorldClocksHeaderSkeleton />
+      )}
       <div className="absolute top-0 right-0 w-[80px] h-full" style={{
         background: `linear-gradient(to left, ${backgroundColor}, transparent)`,
       }} />
@@ -71,6 +71,9 @@ export function WorldClocks() {
 
 type WorldClockHeaderProps = {
   envTzReady: boolean;
+  clocksHydrated: boolean;
+  /** Both IANA env and persisted clocks are ready — show real header. */
+  headerReady: boolean;
   localTz: string;
   systemTz: string;
   now: Date;
@@ -83,7 +86,13 @@ function WorldClockPanel(m: WorldClockHeaderProps) {
   const { localTz, systemTz, now, visibleUserClocks, implicitZoneSet, clocks } = m;
 
   return (
-    <>
+    <Group
+      wrap="nowrap"
+      align="flex-start"
+      gap={0}
+      style={{ width: "max-content", paddingBottom: 4 }}
+      ml={-24}
+    >
       {localTz === systemTz ? (
         <WorldClockCard
           key={`pinned-merged-${localTz}`}
@@ -116,7 +125,46 @@ function WorldClockPanel(m: WorldClockHeaderProps) {
         />
       ))}
       <AddClockButton {...{ implicitZoneSet, clocks }} />
-    </>
+      <Space w={32} />
+    </Group>
+  );
+}
+
+/** Shown until host time zones resolve and world-clock storage has hydrated. */
+function WorldClocksHeaderSkeleton() {
+  return (
+    <Group
+      wrap="nowrap"
+      align="flex-start"
+      gap={0}
+      style={{ width: "max-content", paddingBottom: 4, opacity: 0.5 }}
+      ml={-24}
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <VisuallyHidden>Loading world clocks</VisuallyHidden>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <WorldClockCardSkeleton key={i} />
+      ))}
+    </Group>
+  );
+}
+
+/** Mirrors {@link WorldClockCard} layout: analog-sized circle + stacked labels. */
+function WorldClockCardSkeleton() {
+  return (
+    <Box w="154px" style={{ overflow: "hidden" }}>
+      <Stack gap="ms">
+        <Group justify="center" wrap="nowrap">
+          <Skeleton height={CLOCK_SIZE} width={CLOCK_SIZE} circle aria-hidden />
+        </Group>
+        <Stack gap={6} align="center">
+          <Skeleton height={14} width={118} radius="sm" aria-hidden />
+          <Skeleton height={14} width={76} radius="sm" aria-hidden />
+        </Stack>
+      </Stack>
+    </Box>
   );
 }
 
@@ -140,7 +188,7 @@ function WorldClockCard({
   const extras = additionalLabelLines(additionalLabel);
 
   return (
-    <Box pr="xl">
+    <Box w="154px" style={{ overflow: "hidden" }}>
       <Stack gap="ms">
         <WorldClockAnalog {...{ wall, dayPeriod }} />
         <Stack gap={3}>
@@ -311,6 +359,14 @@ function WorldClockAnalog({
           flexShrink: 0,
         }}
       >
+        <Skeleton
+          height={CLOCK_SIZE}
+          width={CLOCK_SIZE}
+          circle
+          aria-hidden
+          style={{ position: "absolute", top: 0, left: 0, opacity: 0.5 }}
+          animate={false}
+        />
         <Clock
           value={wall}
           size={CLOCK_SIZE}
@@ -344,6 +400,7 @@ function WorldClockAnalog({
 
 function useWorldClockHeaderMechanics(): WorldClockHeaderProps {
   const { envTzReady, localTz, systemTz } = useHostTimeZones();
+  const clocksHydrated = useWorldClockHydrated();
   const clocks = useWorldClocks();
   const [now, setNow] = useState(() => new Date());
 
@@ -364,8 +421,12 @@ function useWorldClockHeaderMechanics(): WorldClockHeaderProps {
     [clocks, implicitZoneSet],
   );
 
+  const headerReady = envTzReady && clocksHydrated;
+
   return {
     envTzReady,
+    clocksHydrated,
+    headerReady,
     localTz,
     systemTz,
     now,

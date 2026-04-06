@@ -28,20 +28,15 @@ body {
 .react-clock {
   background: var(--mantine-color-gray-3);
   border-radius: 10000px;
-  opacity: 0.85;
+  opacity: 0.75;
 }
 
 .tick-credits {
   display: none;
 }
 
-.tick div[data-repeat="true"] {
-  display: flex;
-  flex-wrap: nowrap;
-}
-
-.tick-flip-card, .tick-flip-spacer {
-  width: 80px;
-  max-width: 80px;
-  overflow: hidden;
+.tick .tick-flip {
+  min-width: 0.95em;
+  max-width: 0.95em;
+  text-indent: 0.19em;
 }

@@ -6,10 +6,12 @@ import {
   Checkbox,
   Group,
   ScrollArea,
+  Skeleton,
   Stack,
   Text,
   Textarea,
   Space,
+  VisuallyHidden,
 } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
 import {
@@ -65,18 +67,16 @@ export function TodaysTodo() {
         pos="relative"
         mt={8}
         mb={8}
-        style={{ flex: 1, minHeight: 0 }}
+        style={{ minHeight: 0, flexGrow: 1 }}
         styles={{
           thumb: { backgroundColor: "green.8", opacity: 0.5 },
         }}
       >
-        <Stack gap={0} pr={6} pb={4}>
-          {!m.hydrated ? (
-            <Text size="sm" c="dimmed">
-              Loading…
-            </Text>
-          ) : (
-            m.items.map((item, index) => (
+        {!m.hydrated ? (
+          <TodaysTodoTasksSkeleton />
+        ) : (
+          <Stack gap={0} pr={6} pb={4}>
+            {m.items.map((item, index) => (
               <TodoPersistedRow
                 key={item.id}
                 item={item}
@@ -84,9 +84,9 @@ export function TodaysTodo() {
                 items={m.items}
                 focusAPI={m.focusAPI}
               />
-            ))
-          )}
-        </Stack>
+            ))}
+          </Stack>
+        )}
         <Space h={28} ref={m.lastRowScrollRef} />
         <div className="absolute bottom-0 left-0 w-full h-[40px]" style={{
           background: `linear-gradient(to top, ${backgroundColor}, transparent)`,
@@ -97,8 +97,28 @@ export function TodaysTodo() {
           draftAPI={m.draftAPI}
           lastItem={m.items.length > 0 ? m.items[m.items.length - 1]! : null}
           focusAPI={m.focusAPI}
+          hydrated={m.hydrated}
         />
       </Box>
+    </Stack>
+  );
+}
+
+/** Mimics {@link TodoPersistedRow} layout while todo storage hydrates. */
+function TodaysTodoTasksSkeleton() {
+  const barWidths = ["88%", "74%", "92%", "67%", "81%"] as const;
+
+  return (
+    <Stack gap={12} role="status" aria-live="polite" aria-busy="true" opacity={0.5} pt={6}>
+      <VisuallyHidden>Loading tasks</VisuallyHidden>
+      {barWidths.map((width, index) => (
+        <Group key={index} wrap="nowrap" gap={7} align="flex-start" w="100%" pl={6}>
+          <Skeleton circle height={16} flex="0 0 auto" mt={1} aria-hidden animate />
+          <Box flex={1} miw={0}>
+            <Skeleton height={18} radius="sm" width={width} aria-hidden animate />
+          </Box>
+        </Group>
+      ))}
     </Stack>
   );
 }
@@ -179,12 +199,14 @@ type TodoTrailingRowProps = {
   draftAPI: TodaysTodoDraftApi;
   lastItem: TodoItem | null;
   focusAPI: TodaysTodoFocusApi;
+  hydrated: boolean;
 };
 
 function TodoTrailingRow({
   draftAPI,
   lastItem,
   focusAPI,
+  hydrated,
 }: TodoTrailingRowProps) {
   const color = usePhaseColor();
   const {
@@ -223,7 +245,7 @@ function TodoTrailingRow({
         size="sm"
         minRows={1}
         autosize
-        maxRows={8}
+        maxRows={1}
         placeholder="Add a task…"
         value={draftAPI.draft}
         variant="unstyled"
@@ -237,6 +259,7 @@ function TodoTrailingRow({
             paddingTop: 0,
             paddingBottom: 0,
             lineHeight: 2,
+            maxHeight: "30px",
           },
         }}
       />

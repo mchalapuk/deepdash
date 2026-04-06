@@ -1,7 +1,6 @@
 "use client";
 
 import { Box, Container, Grid, GridCol, Stack } from "@mantine/core";
-import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 import { Calculator } from "./Calculator";
 import { Pomodoro } from "./Pomodoro";
@@ -10,11 +9,8 @@ import { TodaysWork } from "./TodaysWork";
 import { WorldClocks } from "./WorldClocks";
 
 export function DashboardShell() {
-  const headerRef = useRef<HTMLDivElement>(null);
-  const bodyHeightCss = useDashboardBodyHeight(headerRef);
-
   const bodyColStyle = {
-    height: bodyHeightCss,
+    height: "calc(100vh - 219px)",
     minHeight: 0,
   } as const;
 
@@ -31,7 +27,7 @@ export function DashboardShell() {
     >
       <Grid columns={12} columnGap="xl" rowGap={0}>
         <GridCol span={12}>
-          <Box ref={headerRef} pt={42} pb={4}>
+          <Box pt={42} pb={4}>
             <WorldClocks />
           </Box>
         </GridCol>
@@ -46,7 +42,17 @@ export function DashboardShell() {
             <Box style={{ flexShrink: 0 }} pt={28}>
               <Pomodoro />
             </Box>
-            <Calculator />
+            <Box
+              style={{
+                flex: 1,
+                minHeight: 0,
+                minWidth: 0,
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <Calculator />
+            </Box>
           </Stack>
         </GridCol>
         <GridCol span={4} style={bodyColStyle}>
@@ -62,29 +68,4 @@ export function DashboardShell() {
       </Grid>
     </Container>
   );
-}
-
-function useDashboardBodyHeight(headerRef: RefObject<HTMLElement | null>): string {
-  const [css, setCss] = useState("calc(100vh - 160px)");
-
-  const sync = useCallback(() => {
-    const el = headerRef.current;
-    if (typeof window === "undefined" || !el) return;
-    setCss(`calc(100vh - ${el.offsetHeight}px)`);
-  }, [headerRef]);
-
-  useLayoutEffect(() => {
-    sync();
-    const el = headerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => sync());
-    ro.observe(el);
-    window.addEventListener("resize", sync);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", sync);
-    };
-  }, [sync]);
-
-  return css;
 }
