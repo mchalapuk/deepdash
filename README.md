@@ -6,8 +6,9 @@
 
 ## Features
 
-- **Pomodoro** — Work / short break / long break with configurable durations, daily work-time tracking, phase-colored backdrop, optional chime and desktop notifications.
 - **World clocks** — Configurable analog clocks with IANA time zones and labels.
+- **Pomodoro** — Work / short break / long break with configurable durations, daily work-time tracking, phase-colored backdrop, optional chime and desktop notifications.
+- **Work Log** — Log of each pomodoro session and pauses in them; Total workd time calculation.
 - **Calculator** — Single expression field; normalized parse and numeric result (evaluated on enter). Calculation history of 200 entries.
 - **Daily TODO** — Checkbox list with keyboard-oriented editing; carrying incomplete items into a new day.
 - **Import / Export** — Versioned JSON snapshot of dashboard data for backup and restore.
