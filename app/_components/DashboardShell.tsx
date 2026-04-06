@@ -61,7 +61,7 @@ export function DashboardShell() {
           </Box>
         </GridCol>
         <GridCol component="aside" span={3} style={bodyColStyle}>
-          <Box h="100%" className="min-h-0" pb={38} style={{ overflow: "hidden" }}>
+          <Box h="100%" className="min-h-0" pb={43} style={{ overflow: "hidden" }}>
             <TodaysTodo />
           </Box>
         </GridCol>

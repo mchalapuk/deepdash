@@ -28,6 +28,11 @@ import {
 import { todoActions, useTodoList, type TodoItem } from "@/app/_stores/todoStore";
 import { usePhaseColor, usePhaseBackgroundColor } from "@/lib/layout";
 import log from "@/lib/logger";
+import {
+  moveTextareaCaretOneVisualLine,
+  textareaCaretIndexOnLastVisualLine,
+  textareaVisualLineColumnOffset,
+} from "@/lib/todaysTodoTextareaNav";
 
 /** Trailing “add task” field: value, setter, commit. */
 type TodaysTodoDraftApi = {
@@ -39,16 +44,25 @@ type TodaysTodoDraftApi = {
 /** Focus, refs, list edges, and trailing-field length shared by persisted rows and the add row. */
 type TodaysTodoFocusApi = {
   trailingDraftLength: number;
+  persistedItemCount: number;
   setRowInputRef: (itemId: string) => (el: HTMLTextAreaElement | null) => void;
   setTrailingInputRef: (el: HTMLTextAreaElement | null) => void;
   focusRow: (id: string, pos: number) => void;
+  /** Arrow up from the row below: caret on last visual line, matching column. */
+  focusRowFromBelow: (id: string, columnOffset: number) => void;
   focusTrailing: (pos: number) => void;
   isFirstRow: (rowIndex: number) => boolean;
   isLastRow: (rowIndex: number) => boolean;
 };
 
 export function TodaysTodo() {
-  const m = useTodaysTodoMechanics();
+  const {
+    hydrated,
+    items,
+    draftAPI,
+    focusAPI,
+    lastRowScrollRef,
+  } = useTodaysTodoMechanics();
   const backgroundColor = usePhaseBackgroundColor();
 
   return (
@@ -72,32 +86,31 @@ export function TodaysTodo() {
           thumb: { backgroundColor: "green.8", opacity: 0.5 },
         }}
       >
-        {!m.hydrated ? (
+        {!hydrated ? (
           <TodaysTodoTasksSkeleton />
         ) : (
           <Stack gap={0} pr={6} pb={4}>
-            {m.items.map((item, index) => (
+            {items.map((item, index) => (
               <TodoPersistedRow
                 key={item.id}
                 item={item}
                 index={index}
-                items={m.items}
-                focusAPI={m.focusAPI}
+                items={items}
+                focusAPI={focusAPI}
               />
             ))}
           </Stack>
         )}
-        <Space h={28} ref={m.lastRowScrollRef} />
+        <Space h={28} ref={lastRowScrollRef} />
         <div className="absolute bottom-0 left-0 w-full h-[40px]" style={{
           background: `linear-gradient(to top, ${backgroundColor}, transparent)`,
         }} />
       </ScrollArea>
       <Box style={{ flexShrink: 0 }}>
         <TodoTrailingRow
-          draftAPI={m.draftAPI}
-          lastItem={m.items.length > 0 ? m.items[m.items.length - 1]! : null}
-          focusAPI={m.focusAPI}
-          hydrated={m.hydrated}
+          draftAPI={draftAPI}
+          lastItem={items.length > 0 ? items[items.length - 1]! : null}
+          focusAPI={focusAPI}
         />
       </Box>
     </Stack>
@@ -199,14 +212,12 @@ type TodoTrailingRowProps = {
   draftAPI: TodaysTodoDraftApi;
   lastItem: TodoItem | null;
   focusAPI: TodaysTodoFocusApi;
-  hydrated: boolean;
 };
 
 function TodoTrailingRow({
   draftAPI,
   lastItem,
   focusAPI,
-  hydrated,
 }: TodoTrailingRowProps) {
   const color = usePhaseColor();
   const {
@@ -222,7 +233,7 @@ function TodoTrailingRow({
   });
 
   return (
-    <Group wrap="nowrap" gap={5.5} align="flex-start" w="100%" pl={3.5} pos="relative">
+    <Group wrap="nowrap" gap={5.5} align="flex-start" w="100%" pos="relative">
       <ActionIcon
         variant="light"
         color={color}
@@ -233,8 +244,8 @@ function TodoTrailingRow({
         onClick={onAddButtonClick}
         style={{
           position: "absolute",
-          bottom: "10px",
-          left: "6px",
+          bottom: "5px",
+          left: "3px",
         }}
       >
         <IconPlus size={12} stroke={3} />
@@ -256,9 +267,10 @@ function TodoTrailingRow({
         onKeyDown={onKeyDown}
         styles={{
           input: {
-            paddingTop: 0,
-            paddingBottom: 0,
+            paddingTop: "0px",
+            paddingBottom: "0px",
             lineHeight: 2,
+            minHeight: "30px",
             maxHeight: "30px",
           },
         }}
@@ -330,6 +342,22 @@ function useTodaysTodoMechanics(): TodaysTodoMechanics {
     });
   }, []);
 
+  const focusRowFromBelow = useCallback((id: string, columnOffset: number) => {
+    queueMicrotask(() => {
+      requestAnimationFrame(() => {
+        const tel = rowRefs.current[id];
+        if (!tel) return;
+        tel.focus();
+        const pos = textareaCaretIndexOnLastVisualLine(tel, columnOffset);
+        try {
+          tel.setSelectionRange(pos, pos);
+        } catch (e: unknown) {
+          log.warn("todaysTodo: focusRowFromBelow setSelectionRange failed", e);
+        }
+      });
+    });
+  }, []);
+
   const focusTrailing = useCallback((pos: number) => {
     queueMicrotask(() => {
       requestAnimationFrame(() => {
@@ -370,20 +398,23 @@ function useTodaysTodoMechanics(): TodaysTodoMechanics {
   const focusAPI = useMemo<TodaysTodoFocusApi>(
     () => ({
       trailingDraftLength: trailingDraft.length,
+      persistedItemCount: items.length,
       setRowInputRef,
       setTrailingInputRef,
       focusRow,
+      focusRowFromBelow,
       focusTrailing,
       isFirstRow: (rowIndex: number) => rowIndex === 0,
       isLastRow: (rowIndex: number) => rowIndex === items.length - 1,
     }),
     [
       trailingDraft.length,
+      items.length,
       setRowInputRef,
       setTrailingInputRef,
       focusRow,
+      focusRowFromBelow,
       focusTrailing,
-      items.length,
     ],
   );
 
@@ -430,7 +461,13 @@ function usePersistedTodoRowInput({
     null,
   );
 
-  const { focusRow, focusTrailing, trailingDraftLength, setRowInputRef } = focusAPI;
+  const {
+    focusRow,
+    focusRowFromBelow,
+    focusTrailing,
+    trailingDraftLength,
+    setRowInputRef,
+  } = focusAPI;
 
   useLayoutEffect(() => {
     const el = inputRef.current;
@@ -477,8 +514,8 @@ function usePersistedTodoRowInput({
 
   const onKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      const isFirst = focusAPI.isFirstRow(index);
-      const isLast = focusAPI.isLastRow(index);
+      const isFirst = index === 0;
+      const isLast = index === items.length - 1;
       const el = e.currentTarget;
       const value = el.value;
       const start = el.selectionStart ?? 0;
@@ -493,15 +530,24 @@ function usePersistedTodoRowInput({
       }
 
       if (noFieldNavMod && collapsed && e.key === "ArrowUp") {
+        if (moveTextareaCaretOneVisualLine(el, -1)) {
+          e.preventDefault();
+          return;
+        }
         if (!isFirst) {
           e.preventDefault();
           const prev = items[index - 1]!;
-          focusRow(prev.id, clampColumn(start, prev.text.length));
+          const col = textareaVisualLineColumnOffset(el, start);
+          focusRowFromBelow(prev.id, col);
         }
         return;
       }
 
       if (noFieldNavMod && collapsed && e.key === "ArrowDown") {
+        if (moveTextareaCaretOneVisualLine(el, 1)) {
+          e.preventDefault();
+          return;
+        }
         e.preventDefault();
         if (isLast) {
           focusTrailing(clampColumn(start, trailingDraftLength));
@@ -532,22 +578,21 @@ function usePersistedTodoRowInput({
         return;
       }
 
-      if (isModEnter(e)) {
+      if (isSplitEnter(e)) {
+        if (!collapsed) return;
         e.preventDefault();
-        if (start === 0 && collapsed) {
+        if (start === 0) {
           const newId = todoActions.insertEmptyAt(index);
           focusRow(newId, 0);
           return;
         }
-        if (start === value.length && collapsed) {
+        if (start === value.length) {
           const newId = todoActions.insertEmptyAt(index + 1);
           focusRow(newId, 0);
           return;
         }
-        if (collapsed && start > 0 && start < value.length) {
-          const newId = todoActions.splitItemAt(id, start);
-          if (newId) focusRow(newId, 0);
-        }
+        const newId = todoActions.splitItemAt(id, start);
+        if (newId) focusRow(newId, 0);
         return;
       }
 
@@ -595,7 +640,15 @@ function usePersistedTodoRowInput({
         }
       }
     },
-    [id, index, items, focusAPI],
+    [
+      id,
+      index,
+      items,
+      focusRow,
+      focusRowFromBelow,
+      focusTrailing,
+      trailingDraftLength,
+    ],
   );
 
   return {
@@ -629,9 +682,17 @@ function useTrailingTodoRowInput({
     null,
   );
   const draftRef = useRef(draft);
-  draftRef.current = draft;
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
 
-  const { focusRow, setTrailingInputRef } = focusAPI;
+  const {
+    focusRow,
+    focusRowFromBelow,
+    focusTrailing,
+    setTrailingInputRef,
+    persistedItemCount,
+  } = focusAPI;
 
   useLayoutEffect(() => {
     const el = innerRef.current;
@@ -692,16 +753,60 @@ function useTrailingTodoRowInput({
         return;
       }
 
-      if (isModEnter(e)) {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.key === "Enter" &&
+        !e.shiftKey &&
+        !e.nativeEvent.isComposing
+      ) {
         e.preventDefault();
         if (value.trim() === "") return;
         commitTrailing(value);
         return;
       }
 
-      if (noFieldNavMod && collapsed && e.key === "ArrowUp" && lastItem) {
+      if (isSplitEnter(e)) {
+        if (!collapsed) return;
+        if (value.trim() === "") return;
         e.preventDefault();
-        focusRow(lastItem.id, clampColumn(start, lastItem.text.length));
+
+        if (start === 0 && value.length > 0) {
+          const newId = todoActions.insertEmptyAt(persistedItemCount);
+          focusRow(newId, 0);
+          return;
+        }
+        if (start === value.length && value.length > 0) {
+          const newId = todoActions.insertEmptyAt(persistedItemCount);
+          focusRow(newId, 0);
+          return;
+        }
+        if (start > 0 && start < value.length) {
+          const left = value.slice(0, start);
+          const right = value.slice(start);
+          todoActions.addItem(left, false);
+          setDraft(right);
+          draftRef.current = right;
+          trailingSelectionRef.current = { start: 0, end: 0 };
+          focusTrailing(0);
+        }
+        return;
+      }
+
+      if (noFieldNavMod && collapsed && e.key === "ArrowUp" && lastItem) {
+        if (moveTextareaCaretOneVisualLine(el, -1)) {
+          e.preventDefault();
+          return;
+        }
+        e.preventDefault();
+        const col = textareaVisualLineColumnOffset(el, start);
+        focusRowFromBelow(lastItem.id, col);
+        return;
+      }
+
+      if (noFieldNavMod && collapsed && e.key === "ArrowDown") {
+        if (moveTextareaCaretOneVisualLine(el, 1)) {
+          e.preventDefault();
+        }
         return;
       }
 
@@ -716,7 +821,15 @@ function useTrailingTodoRowInput({
         focusRow(lastItem.id, lastItem.text.length);
       }
     },
-    [commitTrailing, draftAPI, focusRow, lastItem],
+    [
+      commitTrailing,
+      focusRow,
+      focusRowFromBelow,
+      focusTrailing,
+      lastItem,
+      persistedItemCount,
+      setDraft,
+    ],
   );
 
   const onAddButtonClick = useCallback(() => {
@@ -740,9 +853,12 @@ function useTrailingTodoRowInput({
   };
 }
 
-/** Ctrl+Enter / Cmd+Enter — plain Enter inserts a newline in textareas. */
-function isModEnter(e: KeyboardEvent): boolean {
-  return e.key === "Enter" && (e.ctrlKey || e.metaKey);
+/**
+ * Enter splits into two tasks; Shift+Enter keeps the default newline.
+ * Ctrl/Cmd+Enter is handled separately for trailing (commit full draft).
+ */
+function isSplitEnter(e: KeyboardEvent): boolean {
+  return e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing;
 }
 
 /** Same visual column when moving vertically between fields. */
