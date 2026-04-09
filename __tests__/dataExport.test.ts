@@ -5,6 +5,7 @@ import { pomodoroActions } from "@/app/_stores/pomodoroStore";
 import { todoActions } from "@/app/_stores/todoStore";
 import { worldClockActions } from "@/app/_stores/worldClockStore";
 import exportV1Fixture from "../__fixtures__/export-v1.json";
+import todoSliceV1Fixture from "../__fixtures__/todo-slice-v1.json";
 import {
   applyDeepdashImportWithRollback,
   CURRENT_DEEPDASH_EXPORT_VERSION,
@@ -13,6 +14,7 @@ import {
   tryMigrateDeepdashBundle,
   type DeepdashExportLatest,
 } from "@/lib/dataExport";
+import { migrateTodoSliceToLatest } from "@/app/_stores/todoStore";
 
 /** Asserts migration succeeds; mirrors the former `migrateImportToLatest` helper for tests. */
 function expectMigratedBundle(raw: unknown): DeepdashExportLatest {
@@ -64,10 +66,11 @@ describe("dataExport migrations", () => {
         },
       },
       todo: {
-        version: 1,
+        version: 2,
         todosByDay: {
           "2026-04-04": {
             items: [{ id: "todo-1", text: "Ship export", done: false }],
+            backlogItems: [],
           },
         },
         todoRolloverMarkers: {
@@ -108,7 +111,7 @@ describe("dataExport migrations", () => {
       clocks: [{ id: "x", timeZone: "UTC", label: "" }],
     });
     expect(result.todo).toEqual({
-      version: 1,
+      version: 2,
       todosByDay: {},
       todoRolloverMarkers: {},
     });
@@ -139,7 +142,7 @@ describe("dataExport migrations", () => {
       exportedAt: "2026-01-01T00:00:00.000Z",
       worldClock: { version: 99, clocks: [] },
       pomodoro: { version: 1, config: {}, logs: { days: {} } },
-      todo: { version: 1, todosByDay: {}, todoRolloverMarkers: {} },
+      todo: { version: 2, todosByDay: {}, todoRolloverMarkers: {} },
       calculator: { version: 99, expression: "", history: [] },
     });
     expect(r.ok).toBe(false);
@@ -177,6 +180,47 @@ describe("dataExport migrations", () => {
     expect(result.pomodoro.logs).toEqual({ days: {} });
     expect(result.pomodoro.config.workDurationMs).toBe(25 * 60 * 1000);
     expect(result.calculator).toMatchObject({ expression: "", history: [] });
+    expect(result.todo).toEqual({
+      version: 2,
+      todosByDay: {},
+      todoRolloverMarkers: {},
+    });
+  });
+
+  it("migrates todo slice v1 day documents to v2 with backlogItems", () => {
+    expect(
+      migrateTodoSliceToLatest({
+        version: 1,
+        todosByDay: {
+          "2026-04-04": {
+            items: [{ id: "todo-1", text: "Ship export", done: false }],
+          },
+        },
+        todoRolloverMarkers: { "2026-04-03": "2026-04-04" },
+      }),
+    ).toEqual({
+      version: 2,
+      todosByDay: {
+        "2026-04-04": {
+          items: [{ id: "todo-1", text: "Ship export", done: false }],
+          backlogItems: [],
+        },
+      },
+      todoRolloverMarkers: { "2026-04-03": "2026-04-04" },
+    });
+  });
+
+  it("migrates todo-slice-v1.json fixture to v2 shape", () => {
+    expect(migrateTodoSliceToLatest(todoSliceV1Fixture)).toEqual({
+      version: 2,
+      todosByDay: {
+        "2026-04-04": {
+          items: [{ id: "todo-1", text: "From v1 export", done: false }],
+          backlogItems: [],
+        },
+      },
+      todoRolloverMarkers: { "2026-04-03": "2026-04-04" },
+    });
   });
 });
 
@@ -202,7 +246,7 @@ describe("applyDeepdashImportWithRollback", () => {
         },
         logs: { days: {} },
       },
-      todo: { version: 1, todosByDay: {}, todoRolloverMarkers: {} },
+      todo: { version: 2, todosByDay: {}, todoRolloverMarkers: {} },
       calculator: { version: 1, expression: "seed", history: [] },
     };
 

@@ -20,10 +20,19 @@ const todoStore = proxy({
   hydrated: false,
   /** Local calendar-day key for the bucket currently loaded into `items`. */
   dayKey: "" as string,
+  /** Tasks in the “Today’s tasks” tab (rollover appends here). */
   items: [] as TodoItem[],
+  /** Tasks in the Backlog tab for the same calendar day. */
+  backlogItems: [] as TodoItem[],
 });
 
 /** Persisted JSON for one calendar day (persisted rows only; no trailing editor). */
+export type TodoDayDocumentV2 = {
+  items: TodoItem[];
+  backlogItems: TodoItem[];
+};
+
+/** @deprecated Use {@link TodoDayDocumentV2}; import migration accepts this shape. */
 export type TodoDayDocumentV1 = {
   items: TodoItem[];
 };
@@ -34,16 +43,34 @@ export type TodoItem = {
   done: boolean;
 };
 
-export const TODO_EXPORT_VERSION = 1 as const;
-export type TodoExportV1 = {
+export const TODO_EXPORT_VERSION = 2 as const;
+
+export type TodoListKind = "today" | "backlog";
+
+export type TodoExportV2 = {
   version: typeof TODO_EXPORT_VERSION;
+  todosByDay: Record<string, TodoDayDocumentV2>;
+  todoRolloverMarkers: Record<string, string>;
+};
+
+/** @deprecated Use {@link TodoExportV2}. */
+export type TodoExportV1 = {
+  version: 1;
   todosByDay: Record<string, TodoDayDocumentV1>;
   todoRolloverMarkers: Record<string, string>;
 };
 
-export function useTodoList(): { hydrated: boolean; items: readonly TodoItem[] } {
+export function useTodoList(): {
+  hydrated: boolean;
+  items: readonly TodoItem[];
+  backlogItems: readonly TodoItem[];
+} {
   const snap = useSnapshot(todoStore);
-  return { hydrated: snap.hydrated, items: snap.items };
+  return {
+    hydrated: snap.hydrated,
+    items: snap.items,
+    backlogItems: snap.backlogItems,
+  };
 }
 
 export const todoActions = {
@@ -90,51 +117,58 @@ export const todoActions = {
   },
 
   setItemText: function setItemText(id: string, text: string): void {
-    const i = indexOfId(id);
-    if (i < 0) return;
-    todoStore.items[i].text = text;
+    const loc = findItemLocation(id);
+    if (!loc) return;
+    itemsForList(loc.kind)[loc.index].text = text;
   },
 
   toggleDone: function toggleDone(id: string): void {
-    const i = indexOfId(id);
-    if (i < 0) return;
-    todoStore.items[i].done = !todoStore.items[i].done;
+    const loc = findItemLocation(id);
+    if (!loc) return;
+    const row = itemsForList(loc.kind)[loc.index];
+    row.done = !row.done;
   },
 
-  addItem: function addItem(text: string, done = false): string {
+  addItem: function addItem(text: string, done = false, list: TodoListKind = "today"): string {
     const id = crypto.randomUUID();
-    todoStore.items.push({ id, text, done });
+    itemsForList(list).push({ id, text, done });
     return id;
   },
 
-  insertEmptyAt: function insertEmptyAt(index: number): string {
+  insertEmptyAt: function insertEmptyAt(index: number, list: TodoListKind = "today"): string {
     const id = crypto.randomUUID();
-    const clamped = Math.max(0, Math.min(index, todoStore.items.length));
-    todoStore.items.splice(clamped, 0, { id, text: "", done: false });
+    const arr = itemsForList(list);
+    const clamped = Math.max(0, Math.min(index, arr.length));
+    arr.splice(clamped, 0, { id, text: "", done: false });
     return id;
   },
 
   splitItemAt: function splitItemAt(id: string, caret: number): string | null {
-    const i = indexOfId(id);
-    if (i < 0) return null;
-    const t = todoStore.items[i].text;
+    const loc = findItemLocation(id);
+    if (!loc) return null;
+    const arr = itemsForList(loc.kind);
+    const i = loc.index;
+    const t = arr[i].text;
     if (caret <= 0 || caret >= t.length) return null;
     const left = t.slice(0, caret);
     const right = t.slice(caret);
-    const row = todoStore.items[i];
-    todoStore.items[i] = { ...row, text: left };
+    const row = arr[i];
+    arr[i] = { ...row, text: left };
     const newId = crypto.randomUUID();
-    todoStore.items.splice(i + 1, 0, { id: newId, text: right, done: false });
+    arr.splice(i + 1, 0, { id: newId, text: right, done: false });
     return newId;
   },
 
   mergeWithNext: function mergeWithNext(id: string): void {
-    const i = indexOfId(id);
-    if (i < 0 || i >= todoStore.items.length - 1) return;
-    const cur = todoStore.items[i];
-    const next = todoStore.items[i + 1];
+    const loc = findItemLocation(id);
+    if (!loc) return;
+    const arr = itemsForList(loc.kind);
+    const i = loc.index;
+    if (i < 0 || i >= arr.length - 1) return;
+    const cur = arr[i];
+    const next = arr[i + 1];
     const merged = `${cur.text} ${next.text}`;
-    todoStore.items.splice(i, 2, {
+    arr.splice(i, 2, {
       id: cur.id,
       text: merged,
       done: cur.done,
@@ -142,12 +176,15 @@ export const todoActions = {
   },
 
   mergeWithPrev: function mergeWithPrev(id: string): void {
-    const i = indexOfId(id);
+    const loc = findItemLocation(id);
+    if (!loc) return;
+    const arr = itemsForList(loc.kind);
+    const i = loc.index;
     if (i <= 0) return;
-    const prev = todoStore.items[i - 1];
-    const cur = todoStore.items[i];
+    const prev = arr[i - 1];
+    const cur = arr[i];
     const merged = `${prev.text} ${cur.text}`;
-    todoStore.items.splice(i - 1, 2, {
+    arr.splice(i - 1, 2, {
       id: prev.id,
       text: merged,
       done: prev.done,
@@ -155,30 +192,49 @@ export const todoActions = {
   },
 
   removeItem: function removeItem(id: string): void {
-    const i = indexOfId(id);
-    if (i < 0) return;
-    todoStore.items.splice(i, 1);
+    const loc = findItemLocation(id);
+    if (!loc) return;
+    itemsForList(loc.kind).splice(loc.index, 1);
   },
 
   /** Removes a row if it still exists and its text is empty/whitespace (e.g. after blur). */
   removeItemIfEmpty: function removeItemIfEmpty(id: string): void {
-    const i = indexOfId(id);
-    if (i < 0) return;
-    if (todoStore.items[i].text.trim() !== "") return;
-    todoStore.items.splice(i, 1);
+    const loc = findItemLocation(id);
+    if (!loc) return;
+    const arr = itemsForList(loc.kind);
+    if (arr[loc.index].text.trim() !== "") return;
+    arr.splice(loc.index, 1);
   },
 
   /** Swaps the item with its neighbor in the given direction (pointer-driven reorder). */
   moveItemRelative: function moveItemRelative(id: string, delta: -1 | 1): void {
-    const from = indexOfId(id);
-    if (from < 0) return;
+    const loc = findItemLocation(id);
+    if (!loc) return;
+    const arr = itemsForList(loc.kind);
+    const from = loc.index;
     const to = from + delta;
-    if (to < 0 || to >= todoStore.items.length) return;
-    const [row] = todoStore.items.splice(from, 1);
-    todoStore.items.splice(to, 0, row);
+    if (to < 0 || to >= arr.length) return;
+    const [row] = arr.splice(from, 1);
+    arr.splice(to, 0, row);
   },
 
-  exportData: function exportData(): TodoExportV1 {
+  /** Moves a task from Today to Backlog (top of backlog list). */
+  moveItemToBacklog: function moveItemToBacklog(id: string): void {
+    const loc = findItemLocation(id);
+    if (!loc || loc.kind !== "today") return;
+    const [row] = todoStore.items.splice(loc.index, 1);
+    todoStore.backlogItems.unshift(row);
+  },
+
+  /** Moves a task from Backlog to Today (top of today’s list). */
+  moveItemToToday: function moveItemToToday(id: string): void {
+    const loc = findItemLocation(id);
+    if (!loc || loc.kind !== "backlog") return;
+    const [row] = todoStore.backlogItems.splice(loc.index, 1);
+    todoStore.items.unshift(row);
+  },
+
+  exportData: function exportData(): TodoExportV2 {
     return collectTodoExportFromLocalStorage();
   },
 
@@ -201,15 +257,23 @@ export const todoActions = {
       storageSetItemStrict(autoRolloverMarkerKey(yKey), todayKey);
     }
     const today = localDayKey();
-    applyLoadedDay(today, readValidatedDayItems(today));
+    applyLoadedDay(today, readValidatedDayDocument(today));
     lastWrittenJson = JSON.stringify(pickPersistedDocument());
   },
 };
 
 // --- domain helpers ---
 
-function indexOfId(id: string): number {
-  return todoStore.items.findIndex((x) => x.id === id);
+function itemsForList(kind: TodoListKind): TodoItem[] {
+  return kind === "today" ? todoStore.items : todoStore.backlogItems;
+}
+
+function findItemLocation(id: string): { kind: TodoListKind; index: number } | null {
+  const ti = todoStore.items.findIndex((x) => x.id === id);
+  if (ti >= 0) return { kind: "today", index: ti };
+  const bi = todoStore.backlogItems.findIndex((x) => x.id === id);
+  if (bi >= 0) return { kind: "backlog", index: bi };
+  return null;
 }
 
 function previousLocalDayKey(d = new Date()): string {
@@ -263,19 +327,22 @@ function persistNow(): void {
   storageSetItem(dayStorageKey(todoStore.dayKey), s);
 }
 
-function pickPersistedDocument(): TodoDayDocumentV1 {
+function pickPersistedDocument(): TodoDayDocumentV2 {
+  const mapRow = (t: TodoItem) => ({
+    id: t.id,
+    text: t.text,
+    done: t.done,
+  });
   return {
-    items: todoStore.items.map((t) => ({
-      id: t.id,
-      text: t.text,
-      done: t.done,
-    })),
+    items: todoStore.items.map(mapRow),
+    backlogItems: todoStore.backlogItems.map(mapRow),
   };
 }
 
-function applyLoadedDay(dayKey: string, items: TodoItem[]): void {
+function applyLoadedDay(dayKey: string, doc: TodoDayDocumentV2): void {
   todoStore.dayKey = dayKey;
-  todoStore.items = items;
+  todoStore.items = doc.items;
+  todoStore.backlogItems = doc.backlogItems;
 }
 
 function syncTodayPersistSnapshot(): void {
@@ -294,23 +361,33 @@ function isTodoItem(x: unknown): x is TodoItem {
   );
 }
 
-function parseTodoDayDocument(raw: unknown): TodoItem[] {
-  if (!raw || typeof raw !== "object") return [];
-  const o = raw as Record<string, unknown>;
-  if (!Array.isArray(o.items)) return [];
-  return o.items.filter(isTodoItem);
+/** Drops persisted rows with no visible text (empty or whitespace-only). */
+function omitEmptyTodoRows(doc: TodoDayDocumentV2): TodoDayDocumentV2 {
+  const nonempty = (t: TodoItem) => t.text.trim() !== "";
+  return {
+    items: doc.items.filter(nonempty),
+    backlogItems: doc.backlogItems.filter(nonempty),
+  };
 }
 
-function readValidatedDayItems(dayKey: string): TodoItem[] {
-  if (typeof window === "undefined") return [];
+function parseTodoDayDocument(raw: unknown): TodoDayDocumentV2 {
+  if (!raw || typeof raw !== "object") return { items: [], backlogItems: [] };
+  const o = raw as Record<string, unknown>;
+  const items = Array.isArray(o.items) ? o.items.filter(isTodoItem) : [];
+  const backlogItems = Array.isArray(o.backlogItems) ? o.backlogItems.filter(isTodoItem) : [];
+  return omitEmptyTodoRows({ items, backlogItems });
+}
+
+function readValidatedDayDocument(dayKey: string): TodoDayDocumentV2 {
+  if (typeof window === "undefined") return { items: [], backlogItems: [] };
   try {
     const raw = localStorage.getItem(dayStorageKey(dayKey));
-    if (!raw) return [];
+    if (!raw) return { items: [], backlogItems: [] };
     const parsed = JSON.parse(raw) as unknown;
     return parseTodoDayDocument(parsed);
   } catch (e: unknown) {
     log.warn("todo: parse failed for day", dayKey, e);
-    return [];
+    return { items: [], backlogItems: [] };
   }
 }
 
@@ -333,11 +410,13 @@ function storageSetItemStrict(key: string, value: string): void {
 
 /** Rewrite one day bucket so non-empty incomplete rows are dropped (completed + empty rows stay). */
 function stripPendingFromDayBucket(dayKey: string): void {
-  const items = readValidatedDayItems(dayKey);
+  const doc = readValidatedDayDocument(dayKey);
+  const items = doc.items;
   const kept = items.filter((t) => t.done || t.text.trim() === "");
   if (kept.length === items.length) return;
-  const yDoc: TodoDayDocumentV1 = {
+  const yDoc: TodoDayDocumentV2 = {
     items: kept.map((t) => ({ id: t.id, text: t.text, done: t.done })),
+    backlogItems: doc.backlogItems.map((t) => ({ id: t.id, text: t.text, done: t.done })),
   };
   storageSetItem(dayStorageKey(dayKey), JSON.stringify(yDoc));
 }
@@ -363,8 +442,8 @@ function moveYesterdayPendingIntoToday(): void {
     return;
   }
 
-  const yesterdayItems = readValidatedDayItems(yKey);
-  const pending = yesterdayItems.filter((t) => !t.done && t.text.trim() !== "");
+  const yesterdayDoc = readValidatedDayDocument(yKey);
+  const pending = yesterdayDoc.items.filter((t) => !t.done && t.text.trim() !== "");
   if (pending.length === 0) return;
 
   for (const it of pending) {
@@ -385,13 +464,14 @@ function loadFromStorage(): void {
   if (typeof window === "undefined") return;
   migrateLegacyPersistKeysOnce();
   const today = localDayKey();
+  const empty: TodoDayDocumentV2 = { items: [], backlogItems: [] };
   try {
-    applyLoadedDay(today, readValidatedDayItems(today));
+    applyLoadedDay(today, readValidatedDayDocument(today));
     moveYesterdayPendingIntoToday();
     syncTodayPersistSnapshot();
   } catch (e: unknown) {
     log.error("todo: failed to load today’s list", e);
-    applyLoadedDay(today, []);
+    applyLoadedDay(today, empty);
     moveYesterdayPendingIntoToday();
     syncTodayPersistSnapshot();
   }
@@ -403,7 +483,7 @@ function syncCalendarDayIfNeeded(): void {
   const today = localDayKey();
   if (todoStore.dayKey === today) return;
   flushPersistSync();
-  applyLoadedDay(today, readValidatedDayItems(today));
+  applyLoadedDay(today, readValidatedDayDocument(today));
   moveYesterdayPendingIntoToday();
   syncTodayPersistSnapshot();
 }
@@ -434,12 +514,12 @@ function readJsonKey(key: string): unknown {
   }
 }
 
-function parseTodosByDayRecord(raw: unknown): Record<string, TodoDayDocumentV1> {
+function parseTodosByDayRecord(raw: unknown): Record<string, TodoDayDocumentV2> {
   if (!isRecord(raw)) return {};
-  const out: Record<string, TodoDayDocumentV1> = {};
+  const out: Record<string, TodoDayDocumentV2> = {};
   for (const [day, doc] of Object.entries(raw)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
-    out[day] = { items: parseTodoDayDocument(doc) };
+    out[day] = parseTodoDayDocument(doc);
   }
   return out;
 }
@@ -455,8 +535,8 @@ function parseRolloverMarkersRecord(raw: unknown): Record<string, string> {
   return out;
 }
 
-/** Normalize any supported todo import slice to {@link TodoExportV1}. */
-export function migrateTodoSliceToLatest(data: unknown): TodoExportV1 {
+/** Normalize any supported todo import slice to {@link TodoExportV2}. */
+export function migrateTodoSliceToLatest(data: unknown): TodoExportV2 {
   log.debug("todo migration: start");
   if (!isRecord(data)) {
     log.error("todo migration: not an object");
@@ -471,7 +551,7 @@ export function migrateTodoSliceToLatest(data: unknown): TodoExportV1 {
         ? Object.keys(data.todoRolloverMarkers).length
         : 0,
   });
-  if (v !== undefined && v !== TODO_EXPORT_VERSION) {
+  if (v !== undefined && v !== 1 && v !== TODO_EXPORT_VERSION) {
     log.error("todo migration: unsupported version", { version: v });
     throw new Error(
       `todo: unsupported export slice version ${String(v)}. Update the app or re-export your data.`,
@@ -481,7 +561,7 @@ export function migrateTodoSliceToLatest(data: unknown): TodoExportV1 {
   const todoRolloverMarkers = parseRolloverMarkersRecord(data.todoRolloverMarkers);
   let itemCount = 0;
   for (const doc of Object.values(todosByDay)) {
-    itemCount += doc.items.length;
+    itemCount += doc.items.length + doc.backlogItems.length;
   }
   log.debug("todo migration: ok", {
     dayCount: Object.keys(todosByDay).length,
@@ -495,7 +575,7 @@ export function migrateTodoSliceToLatest(data: unknown): TodoExportV1 {
   };
 }
 
-function collectTodoExportFromLocalStorage(): TodoExportV1 {
+function collectTodoExportFromLocalStorage(): TodoExportV2 {
   if (typeof window === "undefined") {
     return {
       version: TODO_EXPORT_VERSION,
@@ -503,14 +583,14 @@ function collectTodoExportFromLocalStorage(): TodoExportV1 {
       todoRolloverMarkers: {},
     };
   }
-  const todosByDay: Record<string, TodoDayDocumentV1> = {};
+  const todosByDay: Record<string, TodoDayDocumentV2> = {};
   const todoRolloverMarkers: Record<string, string> = {};
   for (const key of listLocalStorageKeys()) {
     if (key.startsWith(TODO_DAY_STORAGE_KEY_PREFIX)) {
       const day = key.slice(TODO_DAY_STORAGE_KEY_PREFIX.length);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
       const parsed = readJsonKey(key);
-      todosByDay[day] = { items: parseTodoDayDocument(parsed) };
+      todosByDay[day] = parseTodoDayDocument(parsed);
     } else if (key.startsWith(TODO_AUTO_ROLLOVER_MARKER_PREFIX)) {
       const yKey = key.slice(TODO_AUTO_ROLLOVER_MARKER_PREFIX.length);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(yKey)) continue;

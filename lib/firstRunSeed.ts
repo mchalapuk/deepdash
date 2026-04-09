@@ -48,7 +48,7 @@ export function buildFirstRunSeedBundle(): DeepdashExportLatest {
       }
     },
     todo: {
-      version: 1,
+      version: 2,
       todosByDay: {
         [day]: {
           items: [
@@ -58,6 +58,7 @@ export function buildFirstRunSeedBundle(): DeepdashExportLatest {
             { id: "seed-todo-4", text: "Add tasks to this list", done: false },
             { id: "seed-todo-5", text: "Start working using Pomodoro", done: false },
           ],
+          backlogItems: [],
         },
       },
       todoRolloverMarkers: {},

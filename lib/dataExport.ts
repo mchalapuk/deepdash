@@ -12,7 +12,7 @@ import {
   flushTodoPersistToStorage,
   migrateTodoSliceToLatest,
   todoActions,
-  type TodoExportV1,
+  type TodoExportV2,
 } from "@/app/_stores/todoStore";
 import {
   migrateWorldClockSliceToLatest,
@@ -29,7 +29,7 @@ export type DeepdashExportLatest = {
   exportedAt: string;
   worldClock: WorldClockExportV1;
   pomodoro: PomodoroExportV1;
-  todo: TodoExportV1;
+  todo: TodoExportV2;
   calculator: CalculatorExportV1;
 };
 
@@ -124,7 +124,7 @@ export type TryMigrateDeepdashBundleResult =
       exportedAt: string;
       worldClock: WorldClockExportV1;
       pomodoro: PomodoroExportV1;
-      todo: TodoExportV1;
+      todo: TodoExportV2;
       calculator: CalculatorExportV1;
     }
   | { ok: false; errors: DeepdashImportError[] };
@@ -152,7 +152,7 @@ export function tryMigrateDeepdashBundle(raw: unknown): TryMigrateDeepdashBundle
   const errors: DeepdashImportError[] = [];
   let worldClock: WorldClockExportV1 | undefined;
   let pomodoro: PomodoroExportV1 | undefined;
-  let todo: TodoExportV1 | undefined;
+  let todo: TodoExportV2 | undefined;
   let calculator: CalculatorExportV1 | undefined;
 
   const trySlice = (module: DeepdashImportModuleId, fn: () => void): void => {
