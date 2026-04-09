@@ -168,6 +168,16 @@ export const todoActions = {
     todoStore.items.splice(i, 1);
   },
 
+  /** Swaps the item with its neighbor in the given direction (pointer-driven reorder). */
+  moveItemRelative: function moveItemRelative(id: string, delta: -1 | 1): void {
+    const from = indexOfId(id);
+    if (from < 0) return;
+    const to = from + delta;
+    if (to < 0 || to >= todoStore.items.length) return;
+    const [row] = todoStore.items.splice(from, 1);
+    todoStore.items.splice(to, 0, row);
+  },
+
   exportData: function exportData(): TodoExportV1 {
     return collectTodoExportFromLocalStorage();
   },

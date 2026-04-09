@@ -13,7 +13,7 @@ import {
   Space,
   VisuallyHidden,
 } from "@mantine/core";
-import { IconPlus } from "@tabler/icons-react";
+import { IconGripVertical, IconPlus } from "@tabler/icons-react";
 import {
   useCallback,
   useEffect,
@@ -23,11 +23,14 @@ import {
   useState,
   type ChangeEvent,
   type KeyboardEvent,
+  type PointerEvent,
   type RefObject,
 } from "react";
+
 import { todoActions, useTodoList, type TodoItem } from "@/app/_stores/todoStore";
 import { usePhaseColor, usePhaseBackgroundColor } from "@/lib/layout";
 import log from "@/lib/logger";
+import { useTodaysTodoRowReorder } from "@/lib/todaysTodoRowReorder";
 import {
   moveTextareaCaretOneVisualLine,
   textareaCaretIndexOnLastVisualLine,
@@ -55,6 +58,13 @@ type TodaysTodoFocusApi = {
   isLastRow: (rowIndex: number) => boolean;
 };
 
+/** Row roots, grip handler, and active drag id for task reordering. */
+type TodaysTodoDragApi = {
+  registerRowRoot: (id: string) => (el: HTMLElement | null) => void;
+  onGripPointerDown: (itemId: string) => (e: PointerEvent<HTMLElement>) => void;
+  draggingId: string | null;
+};
+
 export function TodaysTodo() {
   const {
     hydrated,
@@ -62,6 +72,7 @@ export function TodaysTodo() {
     draftAPI,
     focusAPI,
     lastRowScrollRef,
+    dragAPI,
   } = useTodaysTodoMechanics();
   const backgroundColor = usePhaseBackgroundColor();
 
@@ -97,6 +108,7 @@ export function TodaysTodo() {
                 index={index}
                 items={items}
                 focusAPI={focusAPI}
+                dragAPI={dragAPI}
               />
             ))}
           </Stack>
@@ -141,6 +153,7 @@ type TodoPersistedRowProps = {
   index: number;
   items: readonly TodoItem[];
   focusAPI: TodaysTodoFocusApi;
+  dragAPI: TodaysTodoDragApi;
 };
 
 function TodoPersistedRow({
@@ -148,6 +161,7 @@ function TodoPersistedRow({
   index,
   items,
   focusAPI,
+  dragAPI,
 }: TodoPersistedRowProps) {
   const { id, text, done } = item;
   const {
@@ -163,48 +177,91 @@ function TodoPersistedRow({
     focusAPI,
   });
 
+  const { registerRowRoot, onGripPointerDown, draggingId } = dragAPI;
+  const isDragging = draggingId === id;
+
+  const bindRowRoot = useMemo(
+    () => registerRowRoot(id),
+    [id, registerRowRoot],
+  );
+  const gripPointerDown = useMemo(
+    () => onGripPointerDown(id),
+    [id, onGripPointerDown],
+  );
+
   return (
-    <Group wrap="nowrap" gap={7} align="flex-start" w="100%" pl={6}>
-      <Checkbox
-        checked={done}
-        onChange={() => todoActions.toggleDone(id)}
-        aria-label={done ? "Mark as not done" : "Mark as done"}
-        size="xs"
-        color="gray.7"
-        opacity={0.9}
-        pos="relative"
-        top={9}
-      />
-      <Textarea
-        ref={composeInputRef}
-        flex={1}
-        size="sm"
-        minRows={1}
-        autosize
-        maxRows={12}
-        mb={-6}
-        value={text}
-        onChange={onChange}
-        onBlur={onBlurPersisted}
-        onKeyDown={onKeyDown}
-        variant="unstyled"
-        resize="none"
-        styles={{
-          input: {
-            paddingTop: "2px",
-            paddingBottom: "2px",
-            lineHeight: 2,
-            ...(done
-              ? {
-                  textDecoration: "line-through",
-                  opacity: 0.55,
-                }
-              : {}
-            ),
-          },
-        }}
-      />
-    </Group>
+    <Box
+      ref={bindRowRoot}
+      w="100%"
+      style={{
+        borderRadius: 8,
+        transition: "background-color 80ms ease",
+        ...(isDragging
+          ? {
+              backgroundColor: "rgba(255, 255, 255, 0.07)",
+            }
+          : {}),
+      }}
+    >
+      <Group wrap="nowrap" gap={7} align="flex-start" w="100%" pl={6}>
+        <Checkbox
+          checked={done}
+          onChange={() => todoActions.toggleDone(id)}
+          aria-label={done ? "Mark as not done" : "Mark as done"}
+          size="xs"
+          color="gray.7"
+          opacity={0.9}
+          pos="relative"
+          top={7}
+        />
+        <Textarea
+          ref={composeInputRef}
+          flex={1}
+          size="sm"
+          minRows={1}
+          autosize
+          maxRows={12}
+          mt={-2}
+          mb={-4}
+          value={text}
+          onChange={onChange}
+          onBlur={onBlurPersisted}
+          onKeyDown={onKeyDown}
+          variant="unstyled"
+          resize="none"
+          styles={{
+            input: {
+              paddingTop: "2px",
+              paddingBottom: "2px",
+              lineHeight: 2.1,
+              ...(done
+                ? {
+                    textDecoration: "line-through",
+                    opacity: 0.55,
+                  }
+                : {}
+              ),
+            },
+          }}
+        />
+        <ActionIcon
+          variant="subtle"
+          color="gray.7"
+          size="sm"
+          radius="sm"
+          aria-label="Drag to reorder"
+          onPointerDown={gripPointerDown}
+          style={{
+            flexShrink: 0,
+            marginTop: 6,
+            touchAction: "none",
+            cursor: isDragging ? "grabbing" : "grab",
+          }}
+        >
+          <IconGripVertical size={14} stroke={1.5} />
+        </ActionIcon>
+      </Group>
+    </Box>
   );
 }
 
@@ -285,10 +342,16 @@ type TodaysTodoMechanics = {
   draftAPI: TodaysTodoDraftApi;
   focusAPI: TodaysTodoFocusApi;
   lastRowScrollRef: RefObject<HTMLDivElement | null>;
+  dragAPI: TodaysTodoDragApi;
 };
 
 function useTodaysTodoMechanics(): TodaysTodoMechanics {
   const { hydrated, items } = useTodoList();
+  const rowRootRefs = useRef<Record<string, HTMLElement | null>>({});
+  const { registerRowRoot, onGripPointerDown, draggingId } = useTodaysTodoRowReorder(
+    items,
+    rowRootRefs,
+  );
   const [trailingDraft, setTrailingDraft] = useState("");
   const trailingRef = useRef<HTMLTextAreaElement | null>(null);
   const rowRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
@@ -427,12 +490,22 @@ function useTodaysTodoMechanics(): TodaysTodoMechanics {
     [trailingDraft, setTrailingDraft, commitTrailing],
   );
 
+  const dragAPI = useMemo<TodaysTodoDragApi>(
+    () => ({
+      registerRowRoot,
+      onGripPointerDown,
+      draggingId,
+    }),
+    [registerRowRoot, onGripPointerDown, draggingId],
+  );
+
   return {
     hydrated,
     items,
     draftAPI,
     focusAPI,
     lastRowScrollRef,
+    dragAPI,
   };
 }
 
