@@ -20,7 +20,11 @@ export type TodaysTodoFocusApi = {
   focusRow: (id: string, pos: number) => void;
   /** Arrow up from the row below: caret on last visual line, matching column. */
   focusRowFromBelow: (id: string, columnOffset: number) => void;
+  /** Arrow down from the row above: caret on first visual line, matching column. */
+  focusRowFromAbove: (id: string, columnOffset: number) => void;
   focusTrailing: (pos: number) => void;
+  /** Trailing field: caret on first visual line at column (ArrowDown from last task row). */
+  focusTrailingAtFirstLineColumn: (columnOffset: number) => void;
   /** Last “today” row ↓: first backlog row, or trailing if backlog empty. */
   arrowDownFromLastToday: (column: number) => void;
   /** First “backlog” row ↑: last “today” row, or trailing if today empty. */

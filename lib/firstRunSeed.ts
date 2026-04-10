@@ -12,6 +12,7 @@ import {
   POMODORO_CONFIG_KEY,
   POMODORO_LOGS_KEY,
   TODO_AUTO_ROLLOVER_MARKER_PREFIX,
+  TODO_BACKLOG_STORAGE_KEY,
   TODO_DAY_STORAGE_KEY_PREFIX,
   WORLD_CLOCK_STORAGE_KEY,
 } from "@/lib/persistKeys";
@@ -48,7 +49,7 @@ export function buildFirstRunSeedBundle(): DeepdashExportLatest {
       }
     },
     todo: {
-      version: 2,
+      version: 3,
       todosByDay: {
         [day]: {
           items: [
@@ -58,9 +59,9 @@ export function buildFirstRunSeedBundle(): DeepdashExportLatest {
             { id: "seed-todo-4", text: "Add tasks to this list", done: false },
             { id: "seed-todo-5", text: "Start working using Pomodoro", done: false },
           ],
-          backlogItems: [],
         },
       },
+      backlogItems: [],
       todoRolloverMarkers: {},
     },
     calculator: {
@@ -93,7 +94,8 @@ function hasAnyPersistedDeepdashData(): boolean {
     if (!k) continue;
     if (
       k.startsWith(TODO_DAY_STORAGE_KEY_PREFIX) ||
-      k.startsWith(TODO_AUTO_ROLLOVER_MARKER_PREFIX)
+      k.startsWith(TODO_AUTO_ROLLOVER_MARKER_PREFIX) ||
+      k === TODO_BACKLOG_STORAGE_KEY
     ) {
       return true;
     }

@@ -17,7 +17,7 @@ import log from "@/lib/logger";
 
 import { isSplitEnter } from "./todoRowHelpers";
 import {
-  moveTextareaCaretOneVisualLine,
+  isCaretOnFirstVisualLine,
   textareaVisualLineColumnOffset,
 } from "./todaysTodoTextareaNav";
 import type { TodaysTodoDraftApi, TodaysTodoFocusApi, TodoTrailingRowProps } from "./types";
@@ -221,20 +221,12 @@ function useTrailingTodoRowInput({
       }
 
       if (noFieldNavMod && collapsed && e.key === "ArrowUp" && lastItem) {
-        if (moveTextareaCaretOneVisualLine(el, -1)) {
-          e.preventDefault();
+        if (!isCaretOnFirstVisualLine(el, start)) {
           return;
         }
         e.preventDefault();
         const col = textareaVisualLineColumnOffset(el, start);
         focusRowFromBelow(lastItem.id, col);
-        return;
-      }
-
-      if (noFieldNavMod && collapsed && e.key === "ArrowDown") {
-        if (moveTextareaCaretOneVisualLine(el, 1)) {
-          e.preventDefault();
-        }
         return;
       }
 

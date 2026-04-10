@@ -33,7 +33,10 @@ import { TodaysTodoTasksSkeleton } from "./TodaysTodoTasksSkeleton";
 import { TodoTrailingRow } from "./TodoTrailingRow";
 import { TodaysTodoFixedBottomSection } from "./TodaysTodoFixedBottomSection";
 import { useTodaysTodoRowReorder } from "./todaysTodoRowReorder";
-import { textareaCaretIndexOnLastVisualLine } from "./todaysTodoTextareaNav";
+import {
+  textareaCaretIndexOnFirstVisualLine,
+  textareaCaretIndexOnLastVisualLine,
+} from "./todaysTodoTextareaNav";
 import type {
   TodaysTodoDraftApi,
   TodaysTodoDragApi,
@@ -364,6 +367,22 @@ function useFocusApi({
     });
   }, []);
 
+  const focusRowFromAbove = useCallback((id: string, columnOffset: number) => {
+    queueMicrotask(() => {
+      requestAnimationFrame(() => {
+        const tel = rowRefs.current[id];
+        if (!tel) return;
+        tel.focus();
+        const pos = textareaCaretIndexOnFirstVisualLine(tel, columnOffset);
+        try {
+          tel.setSelectionRange(pos, pos);
+        } catch (e: unknown) {
+          log.warn("todaysTodo: focusRowFromAbove setSelectionRange failed", e);
+        }
+      });
+    });
+  }, []);
+
   const focusTrailing = useCallback((pos: number) => {
     queueMicrotask(() => {
       requestAnimationFrame(() => {
@@ -374,6 +393,22 @@ function useFocusApi({
           el.setSelectionRange(pos, pos);
         } catch (e: unknown) {
           log.warn("todaysTodo: focusTrailing setSelectionRange failed", e);
+        }
+      });
+    });
+  }, []);
+
+  const focusTrailingAtFirstLineColumn = useCallback((columnOffset: number) => {
+    queueMicrotask(() => {
+      requestAnimationFrame(() => {
+        const el = trailingRef.current;
+        if (!el) return;
+        el.focus();
+        const pos = textareaCaretIndexOnFirstVisualLine(el, columnOffset);
+        try {
+          el.setSelectionRange(pos, pos);
+        } catch (e: unknown) {
+          log.warn("todaysTodo: focusTrailingAtFirstLineColumn setSelectionRange failed", e);
         }
       });
     });
@@ -394,12 +429,12 @@ function useFocusApi({
     (column: number) => {
       if (backlogItems.length > 0) {
         const first = backlogItems[0]!;
-        focusRow(first.id, clampColumn(column, first.text.length));
+        focusRowFromAbove(first.id, column);
       } else {
-        focusTrailing(clampColumn(column, trailingDraft.length));
+        focusTrailingAtFirstLineColumn(column);
       }
     },
-    [backlogItems, focusRow, focusTrailing, trailingDraft.length],
+    [backlogItems, focusRowFromAbove, focusTrailingAtFirstLineColumn],
   );
 
   const arrowUpFromFirstBacklog = useCallback(
@@ -408,10 +443,10 @@ function useFocusApi({
         const last = todayItems[todayItems.length - 1]!;
         focusRowFromBelow(last.id, column);
       } else {
-        focusTrailing(clampColumn(column, trailingDraft.length));
+        focusTrailingAtFirstLineColumn(column);
       }
     },
-    [todayItems, focusRowFromBelow, focusTrailing, trailingDraft.length],
+    [todayItems, focusRowFromBelow, focusTrailingAtFirstLineColumn],
   );
 
   const setRowInputRef = useCallback((itemId: string) => {
@@ -445,7 +480,9 @@ function useFocusApi({
       setTrailingInputRef,
       focusRow,
       focusRowFromBelow,
+      focusRowFromAbove,
       focusTrailing,
+      focusTrailingAtFirstLineColumn,
       arrowDownFromLastToday,
       arrowUpFromFirstBacklog,
     }),
@@ -457,7 +494,9 @@ function useFocusApi({
       setTrailingInputRef,
       focusRow,
       focusRowFromBelow,
+      focusRowFromAbove,
       focusTrailing,
+      focusTrailingAtFirstLineColumn,
       arrowDownFromLastToday,
       arrowUpFromFirstBacklog,
     ],

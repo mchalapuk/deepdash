@@ -8,6 +8,9 @@ export const CALCULATOR_STORAGE_KEY = "deepdash.calculator.v1";
 /** Per-calendar-day todo buckets: `{prefix}{YYYY-MM-DD}`. */
 export const TODO_DAY_STORAGE_KEY_PREFIX = "deepdash.todo.day.";
 
+/** Single global backlog (not tied to a calendar day). JSON: `{ backlogItems: TodoItem[] }`. */
+export const TODO_BACKLOG_STORAGE_KEY = "deepdash.todo.backlog.v1";
+
 /** Idempotency markers for auto-rollover: `{prefix}{yesterdayKey}` → today’s day key. */
 export const TODO_AUTO_ROLLOVER_MARKER_PREFIX = "deepdash.todo.autoRolloverFrom.";
 

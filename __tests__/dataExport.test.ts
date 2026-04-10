@@ -6,6 +6,7 @@ import { todoActions } from "@/app/_stores/todoStore";
 import { worldClockActions } from "@/app/_stores/worldClockStore";
 import exportV1Fixture from "../__fixtures__/export-v1.json";
 import todoSliceV1Fixture from "../__fixtures__/todo-slice-v1.json";
+import todoSliceV2PerDayBacklogFixture from "../__fixtures__/todo-slice-v2-perday-backlog.json";
 import {
   applyDeepdashImportWithRollback,
   CURRENT_DEEPDASH_EXPORT_VERSION,
@@ -66,13 +67,13 @@ describe("dataExport migrations", () => {
         },
       },
       todo: {
-        version: 2,
+        version: 3,
         todosByDay: {
           "2026-04-04": {
             items: [{ id: "todo-1", text: "Ship export", done: false }],
-            backlogItems: [],
           },
         },
+        backlogItems: [],
         todoRolloverMarkers: {
           "2026-04-03": "2026-04-04",
         },
@@ -111,8 +112,9 @@ describe("dataExport migrations", () => {
       clocks: [{ id: "x", timeZone: "UTC", label: "" }],
     });
     expect(result.todo).toEqual({
-      version: 2,
+      version: 3,
       todosByDay: {},
+      backlogItems: [],
       todoRolloverMarkers: {},
     });
     expect(result.calculator.expression).toBe("");
@@ -142,7 +144,7 @@ describe("dataExport migrations", () => {
       exportedAt: "2026-01-01T00:00:00.000Z",
       worldClock: { version: 99, clocks: [] },
       pomodoro: { version: 1, config: {}, logs: { days: {} } },
-      todo: { version: 2, todosByDay: {}, todoRolloverMarkers: {} },
+      todo: { version: 3, todosByDay: {}, backlogItems: [], todoRolloverMarkers: {} },
       calculator: { version: 99, expression: "", history: [] },
     });
     expect(r.ok).toBe(false);
@@ -181,13 +183,14 @@ describe("dataExport migrations", () => {
     expect(result.pomodoro.config.workDurationMs).toBe(25 * 60 * 1000);
     expect(result.calculator).toMatchObject({ expression: "", history: [] });
     expect(result.todo).toEqual({
-      version: 2,
+      version: 3,
       todosByDay: {},
+      backlogItems: [],
       todoRolloverMarkers: {},
     });
   });
 
-  it("migrates todo slice v1 day documents to v2 with backlogItems", () => {
+  it("migrates todo slice v1 day documents to v3 (global backlog)", () => {
     expect(
       migrateTodoSliceToLatest({
         version: 1,
@@ -199,27 +202,46 @@ describe("dataExport migrations", () => {
         todoRolloverMarkers: { "2026-04-03": "2026-04-04" },
       }),
     ).toEqual({
-      version: 2,
+      version: 3,
       todosByDay: {
         "2026-04-04": {
           items: [{ id: "todo-1", text: "Ship export", done: false }],
-          backlogItems: [],
         },
       },
+      backlogItems: [],
       todoRolloverMarkers: { "2026-04-03": "2026-04-04" },
     });
   });
 
-  it("migrates todo-slice-v1.json fixture to v2 shape", () => {
+  it("migrates todo-slice-v1.json fixture to v3 shape", () => {
     expect(migrateTodoSliceToLatest(todoSliceV1Fixture)).toEqual({
-      version: 2,
+      version: 3,
       todosByDay: {
         "2026-04-04": {
           items: [{ id: "todo-1", text: "From v1 export", done: false }],
-          backlogItems: [],
         },
       },
+      backlogItems: [],
       todoRolloverMarkers: { "2026-04-03": "2026-04-04" },
+    });
+  });
+
+  it("migrates todo slice v2 per-day backlogs into a single global backlog (v3)", () => {
+    expect(migrateTodoSliceToLatest(todoSliceV2PerDayBacklogFixture)).toEqual({
+      version: 3,
+      todosByDay: {
+        "2026-04-10": {
+          items: [{ id: "t1", text: "Today", done: false }],
+        },
+        "2026-04-11": {
+          items: [],
+        },
+      },
+      backlogItems: [
+        { id: "b1", text: "Back A", done: false },
+        { id: "b2", text: "Back B", done: false },
+      ],
+      todoRolloverMarkers: {},
     });
   });
 });
@@ -246,7 +268,7 @@ describe("applyDeepdashImportWithRollback", () => {
         },
         logs: { days: {} },
       },
-      todo: { version: 2, todosByDay: {}, todoRolloverMarkers: {} },
+      todo: { version: 3, todosByDay: {}, backlogItems: [], todoRolloverMarkers: {} },
       calculator: { version: 1, expression: "seed", history: [] },
     };
 

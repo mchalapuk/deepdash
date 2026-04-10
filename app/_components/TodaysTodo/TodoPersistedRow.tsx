@@ -29,11 +29,11 @@ import {
 } from "@/app/_stores/todoStore";
 import log from "@/lib/logger";
 
-import { clampColumn, isSplitEnter } from "./todoRowHelpers";
+import { isSplitEnter } from "./todoRowHelpers";
 import {
-  moveTextareaCaretOneVisualLine,
+  isCaretOnFirstVisualLine,
+  isCaretOnLastVisualLine,
   textareaVisualLineColumnOffset,
-  textareaVisualLineStartIndex,
 } from "./todaysTodoTextareaNav";
 import type { TodoPersistedRowProps, TodaysTodoFocusApi } from "./types";
 
@@ -229,11 +229,13 @@ function usePersistedTodoRowInput({
   const {
     focusRow,
     focusRowFromBelow,
+    focusRowFromAbove,
     focusTrailing,
     trailingDraftLength,
     setRowInputRef,
     arrowDownFromLastToday,
     arrowUpFromFirstBacklog,
+    focusTrailingAtFirstLineColumn,
   } = focusAPI;
 
   useLayoutEffect(() => {
@@ -297,16 +299,7 @@ function usePersistedTodoRowInput({
       }
 
       if (noFieldNavMod && collapsed && e.key === "ArrowUp") {
-        const onFirstVisualLine =
-          textareaVisualLineStartIndex(el, start) === 0;
-        const skipInnerLineMove =
-          listKind === "backlog" && isFirst && onFirstVisualLine;
-
-        if (
-          !skipInnerLineMove &&
-          moveTextareaCaretOneVisualLine(el, -1)
-        ) {
-          e.preventDefault();
+        if (!isCaretOnFirstVisualLine(el, start)) {
           return;
         }
         if (!isFirst) {
@@ -323,20 +316,20 @@ function usePersistedTodoRowInput({
       }
 
       if (noFieldNavMod && collapsed && e.key === "ArrowDown") {
-        if (moveTextareaCaretOneVisualLine(el, 1)) {
-          e.preventDefault();
+        if (!isCaretOnLastVisualLine(el, start)) {
           return;
         }
         e.preventDefault();
+        const col = textareaVisualLineColumnOffset(el, start);
         if (isLast) {
           if (listKind === "today") {
-            arrowDownFromLastToday(clampColumn(start, value.length));
+            arrowDownFromLastToday(col);
           } else {
-            focusTrailing(clampColumn(start, trailingDraftLength));
+            focusTrailingAtFirstLineColumn(col);
           }
         } else {
           const next = items[index + 1]!;
-          focusRow(next.id, clampColumn(start, next.text.length));
+          focusRowFromAbove(next.id, col);
         }
         return;
       }
@@ -433,7 +426,9 @@ function usePersistedTodoRowInput({
       items,
       focusRow,
       focusRowFromBelow,
+      focusRowFromAbove,
       focusTrailing,
+      focusTrailingAtFirstLineColumn,
       trailingDraftLength,
       listKind,
       arrowDownFromLastToday,

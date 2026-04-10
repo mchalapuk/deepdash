@@ -1,6 +1,9 @@
 /**
- * Visual-line caret movement for todo textareas (explicit \n and soft-wrapped lines).
- * Uses an off-screen mirror div with the same width and text styles as the textarea.
+ * Visual-line helpers for todo textareas (explicit \n and soft-wrapped lines).
+ * Uses an off-screen mirror for layout-accurate line boundaries.
+ * Arrow Up/Down **within** a field are left to the browser; we only hook at the first/last
+ * visual line for cross-row navigation (see {@link isCaretOnFirstVisualLine},
+ * {@link isCaretOnLastVisualLine}).
  */
 
 let mirrorEl: HTMLDivElement | null = null;
@@ -21,8 +24,8 @@ function copyTextareaLayoutToMirror(textarea: HTMLTextAreaElement, mirror: HTMLD
   mirror.style.visibility = "hidden";
   mirror.style.left = "-99999px";
   mirror.style.top = "0";
-  mirror.style.whiteSpace = "pre-wrap";
-  mirror.style.wordWrap = "break-word";
+  mirror.style.whiteSpace = cs.whiteSpace;
+  mirror.style.wordWrap = cs.wordWrap;
   mirror.style.overflowWrap = cs.overflowWrap;
   mirror.style.wordBreak = cs.wordBreak;
   mirror.style.width = `${textarea.clientWidth}px`;
@@ -56,8 +59,7 @@ export function textareaCaretPoint(
 
   const mirrorRect = mirror.getBoundingClientRect();
   const spanRect = tail.getBoundingClientRect();
-  const cs = window.getComputedStyle(textarea);
-  const lineHeight = parseFloat(cs.lineHeight) || spanRect.height || 16;
+  const lineHeight = lineHeightPxForTextarea(textarea, spanRect);
   return {
     top: spanRect.top - mirrorRect.top,
     left: spanRect.left - mirrorRect.left,
@@ -65,110 +67,47 @@ export function textareaCaretPoint(
   };
 }
 
-function approxSameLine(a: number, b: number, lh: number): boolean {
-  return Math.abs(a - b) < lh * 0.35;
+/** Used line height in pixels (for comparing `top` / `getBoundingClientRect` values). */
+function lineHeightPxForTextarea(textarea: HTMLTextAreaElement, spanRect: DOMRect): number {
+  const cs = window.getComputedStyle(textarea);
+  const lh = cs.lineHeight;
+  const fs = parseFloat(cs.fontSize) || 16;
+  if (lh === "normal") {
+    return spanRect.height > 1 ? spanRect.height : fs * 1.2;
+  }
+  if (lh.endsWith("px")) {
+    return parseFloat(lh);
+  }
+  const n = parseFloat(lh);
+  // Unitless multiplier (e.g. "2.1") — must not be confused with pixel `top` values.
+  if (!Number.isNaN(n) && n > 0 && n < 10 && !lh.includes("%")) {
+    return n * fs;
+  }
+  if (lh.endsWith("%")) {
+    return (parseFloat(lh) / 100) * fs;
+  }
+  return spanRect.height > 1 ? spanRect.height : fs * 1.2;
 }
 
-/**
- * Move caret one visual line up/down inside the textarea.
- * @returns true if the caret moved within the field; false → cross-field navigation.
- */
-export function moveTextareaCaretOneVisualLine(
+/** True when the caret is on the first visual line (used to delegate in-field ↑ to the browser). */
+export function isCaretOnFirstVisualLine(
   textarea: HTMLTextAreaElement,
-  direction: -1 | 1,
+  caretIndex: number,
 ): boolean {
-  const value = textarea.value;
-  const start = textarea.selectionStart ?? 0;
-  const end = textarea.selectionEnd ?? 0;
-  if (start !== end || value.length === 0) return false;
+  return textareaVisualLineStartIndex(textarea, caretIndex) === 0;
+}
 
-  const pStart = textareaCaretPoint(textarea, start);
-  const lh = pStart.lineHeight || 16;
-  const topStart = pStart.top;
-
-  if (direction === -1) {
-    if (start === 0) return false;
-
-    let lo = 0;
-    let hi = start - 1;
-    let best = -1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >>> 1;
-      const t = textareaCaretPoint(textarea, mid).top;
-      if (t < topStart - lh * 0.2) {
-        best = mid;
-        lo = mid + 1;
-      } else {
-        hi = mid - 1;
-      }
-    }
-    if (best < 0) return false;
-
-    const tPrev = textareaCaretPoint(textarea, best).top;
-    let lineStart = best;
-    while (
-      lineStart > 0 &&
-      approxSameLine(textareaCaretPoint(textarea, lineStart - 1).top, tPrev, lh)
-    ) {
-      lineStart--;
-    }
-    let lineEnd = best;
-    while (
-      lineEnd < start - 1 &&
-      approxSameLine(textareaCaretPoint(textarea, lineEnd + 1).top, tPrev, lh)
-    ) {
-      lineEnd++;
-    }
-
-    const col = textareaVisualLineColumnOffset(textarea, start);
-    const bestPos = Math.min(lineStart + col, lineEnd);
-    textarea.focus();
-    textarea.setSelectionRange(bestPos, bestPos);
-    return true;
-  }
-
-  // direction === 1
-  if (start === value.length) return false;
-
-  const topAtEnd = textareaCaretPoint(textarea, value.length).top;
-  if (topStart >= topAtEnd - lh * 0.12) return false;
-
-  let lo = start + 1;
-  let hi = value.length;
-  let firstOnNext = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >>> 1;
-    const t = textareaCaretPoint(textarea, mid).top;
-    if (t > topStart + lh * 0.15) {
-      firstOnNext = mid;
-      hi = mid - 1;
-    } else {
-      lo = mid + 1;
-    }
-  }
-  if (firstOnNext < 0) return false;
-
-  const tNext = textareaCaretPoint(textarea, firstOnNext).top;
-  let lineStart = firstOnNext;
-  while (
-    lineStart > start &&
-    approxSameLine(textareaCaretPoint(textarea, lineStart - 1).top, tNext, lh)
-  ) {
-    lineStart--;
-  }
-  let lineEnd = firstOnNext;
-  while (
-    lineEnd < value.length &&
-    approxSameLine(textareaCaretPoint(textarea, lineEnd + 1).top, tNext, lh)
-  ) {
-    lineEnd++;
-  }
-
-  const col = textareaVisualLineColumnOffset(textarea, start);
-  const bestPos = Math.min(lineStart + col, lineEnd);
-  textarea.focus();
-  textarea.setSelectionRange(bestPos, bestPos);
-  return true;
+/** True when the caret is on the last visual line (used to delegate in-field ↓ to the browser). */
+export function isCaretOnLastVisualLine(
+  textarea: HTMLTextAreaElement,
+  caretIndex: number,
+): boolean {
+  const n = textarea.value.length;
+  if (n === 0) return true;
+  return (
+    textareaVisualLineStartIndex(textarea, caretIndex) ===
+    textareaVisualLineStartIndex(textarea, n)
+  );
 }
 
 /** UTF-16 index of the first character on the visual line that contains `caretIndex`. */
@@ -242,5 +181,43 @@ export function textareaCaretIndexOnLastVisualLine(
   const lineStart = textareaLastVisualLineStartIndex(textarea);
   const lineLen = n - lineStart;
   const col = Math.max(0, Math.min(columnOffset, lineLen));
+  return lineStart + col;
+}
+
+/**
+ * Largest caret index still on the first visual line (same convention as {@link textareaCaretIndexOnLastVisualLine}).
+ */
+function textareaFirstVisualLineMaxCaretIndex(textarea: HTMLTextAreaElement): number {
+  const n = textarea.value.length;
+  if (n === 0) return 0;
+  let lo = 0;
+  let hi = n;
+  let best = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    if (textareaVisualLineStartIndex(textarea, mid) === 0) {
+      best = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return best;
+}
+
+/**
+ * Caret index on the first visual line, `columnOffset` characters from that line’s start (clamped).
+ * Pairs with {@link textareaCaretIndexOnLastVisualLine} for ArrowDown / ArrowUp between rows.
+ */
+export function textareaCaretIndexOnFirstVisualLine(
+  textarea: HTMLTextAreaElement,
+  columnOffset: number,
+): number {
+  const n = textarea.value.length;
+  if (n === 0) return 0;
+  const lineStart = textareaVisualLineStartIndex(textarea, 0);
+  const maxCaret = textareaFirstVisualLineMaxCaretIndex(textarea);
+  const lineSpan = maxCaret - lineStart;
+  const col = Math.max(0, Math.min(columnOffset, lineSpan));
   return lineStart + col;
 }

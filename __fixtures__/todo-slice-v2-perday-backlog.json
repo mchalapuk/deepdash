@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "todosByDay": {
+    "2026-04-10": {
+      "items": [{ "id": "t1", "text": "Today", "done": false }],
+      "backlogItems": [{ "id": "b1", "text": "Back A", "done": false }]
+    },
+    "2026-04-11": {
+      "items": [],
+      "backlogItems": [{ "id": "b2", "text": "Back B", "done": false }]
+    }
+  },
+  "todoRolloverMarkers": {}
+}

@@ -6,6 +6,7 @@ import log from "@/lib/logger";
 import {
   migrateLegacyPersistKeysOnce,
   TODO_AUTO_ROLLOVER_MARKER_PREFIX,
+  TODO_BACKLOG_STORAGE_KEY,
   TODO_DAY_STORAGE_KEY_PREFIX,
 } from "@/lib/persistKeys";
 
@@ -20,19 +21,24 @@ const todoStore = proxy({
   hydrated: false,
   /** Local calendar-day key for the bucket currently loaded into `items`. */
   dayKey: "" as string,
-  /** Tasks in the “Today’s tasks” tab (rollover appends here). */
+  /** Tasks in the “Today’s tasks” list for {@link dayKey} (rollover appends here). */
   items: [] as TodoItem[],
-  /** Tasks in the Backlog tab for the same calendar day. */
+  /** Global backlog — not tied to a calendar day. */
   backlogItems: [] as TodoItem[],
 });
 
-/** Persisted JSON for one calendar day (persisted rows only; no trailing editor). */
+/** Persisted JSON for one calendar day: today list only. */
+export type TodoDayDocumentV3 = {
+  items: TodoItem[];
+};
+
+/** @deprecated Import migration only; per-day backlog lived here before v3. */
 export type TodoDayDocumentV2 = {
   items: TodoItem[];
   backlogItems: TodoItem[];
 };
 
-/** @deprecated Use {@link TodoDayDocumentV2}; import migration accepts this shape. */
+/** @deprecated Import migration only. */
 export type TodoDayDocumentV1 = {
   items: TodoItem[];
 };
@@ -43,22 +49,30 @@ export type TodoItem = {
   done: boolean;
 };
 
-export const TODO_EXPORT_VERSION = 2 as const;
+export const TODO_EXPORT_VERSION = 3 as const;
 
-export type TodoListKind = "today" | "backlog";
-
-export type TodoExportV2 = {
+export type TodoExportV3 = {
   version: typeof TODO_EXPORT_VERSION;
+  todosByDay: Record<string, TodoDayDocumentV3>;
+  backlogItems: TodoItem[];
+  todoRolloverMarkers: Record<string, string>;
+};
+
+/** @deprecated Use {@link TodoExportV3}. */
+export type TodoExportV2 = {
+  version: 2;
   todosByDay: Record<string, TodoDayDocumentV2>;
   todoRolloverMarkers: Record<string, string>;
 };
 
-/** @deprecated Use {@link TodoExportV2}. */
+/** @deprecated Use {@link TodoExportV3}. */
 export type TodoExportV1 = {
   version: 1;
   todosByDay: Record<string, TodoDayDocumentV1>;
   todoRolloverMarkers: Record<string, string>;
 };
+
+export type TodoListKind = "today" | "backlog";
 
 export function useTodoList(): {
   hydrated: boolean;
@@ -187,7 +201,7 @@ export const todoActions = {
     arr.splice(i - 1, 2, {
       id: prev.id,
       text: merged,
-      done: prev.done,
+      done: prev.done && cur.done,
     });
   },
 
@@ -234,13 +248,13 @@ export const todoActions = {
     todoStore.items.unshift(row);
   },
 
-  exportData: function exportData(): TodoExportV2 {
+  exportData: function exportData(): TodoExportV3 {
     return collectTodoExportFromLocalStorage();
   },
 
   /**
-   * Replaces all todo day buckets and rollover markers. Does not run auto-rollover side effects.
-   * Accepts `{ version, todosByDay, todoRolloverMarkers }` or a legacy object with those fields and no `version`.
+   * Replaces all todo day buckets, global backlog, and rollover markers. Does not run auto-rollover side effects.
+   * Accepts `{ version, todosByDay, backlogItems, todoRolloverMarkers }` or legacy shapes.
    */
   importData: function importData(data: unknown): void {
     const slice = migrateTodoSliceToLatest(data);
@@ -251,14 +265,20 @@ export const todoActions = {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
       storageSetItemStrict(dayStorageKey(day), JSON.stringify(doc));
     }
+    const backlogRows = omitEmptyBacklogItems(
+      slice.backlogItems.map((t) => ({ id: t.id, text: t.text, done: t.done })),
+    );
+    storageSetItemStrict(TODO_BACKLOG_STORAGE_KEY, JSON.stringify({ backlogItems: backlogRows }));
     for (const [yKey, todayKey] of Object.entries(slice.todoRolloverMarkers)) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(yKey)) continue;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(todayKey)) continue;
       storageSetItemStrict(autoRolloverMarkerKey(yKey), todayKey);
     }
     const today = localDayKey();
+    todoStore.backlogItems = backlogRows.map((t) => ({ id: t.id, text: t.text, done: t.done }));
     applyLoadedDay(today, readValidatedDayDocument(today));
-    lastWrittenJson = JSON.stringify(pickPersistedDocument());
+    lastWrittenDayJson = JSON.stringify(pickPersistedDayDocument());
+    lastWrittenBacklogJson = JSON.stringify(pickPersistedBacklogBlob());
   },
 };
 
@@ -292,7 +312,8 @@ function autoRolloverMarkerKey(yesterdayKey: string): string {
   return `${TODO_AUTO_ROLLOVER_MARKER_PREFIX}${yesterdayKey}`;
 }
 
-let lastWrittenJson = "";
+let lastWrittenDayJson = "";
+let lastWrittenBacklogJson = "";
 /** Browser `setTimeout` id (`number`); avoid `NodeJS.Timeout` from Node typings. */
 let debounceTimer: number | null = null;
 
@@ -317,38 +338,49 @@ function flushPersistSync(): void {
   persistNow();
 }
 
-function persistNow(): void {
-  if (typeof window === "undefined") return;
-  if (!todoStore.hydrated) return;
-  const doc = pickPersistedDocument();
-  const s = JSON.stringify(doc);
-  if (s === lastWrittenJson) return;
-  lastWrittenJson = s;
-  storageSetItem(dayStorageKey(todoStore.dayKey), s);
+function mapRow(t: TodoItem): { id: string; text: string; done: boolean } {
+  return { id: t.id, text: t.text, done: t.done };
 }
 
-function pickPersistedDocument(): TodoDayDocumentV2 {
-  const mapRow = (t: TodoItem) => ({
-    id: t.id,
-    text: t.text,
-    done: t.done,
-  });
+function pickPersistedDayDocument(): TodoDayDocumentV3 {
   return {
     items: todoStore.items.map(mapRow),
+  };
+}
+
+function pickPersistedBacklogBlob(): { backlogItems: ReturnType<typeof mapRow>[] } {
+  return {
     backlogItems: todoStore.backlogItems.map(mapRow),
   };
 }
 
-function applyLoadedDay(dayKey: string, doc: TodoDayDocumentV2): void {
-  todoStore.dayKey = dayKey;
-  todoStore.items = doc.items;
-  todoStore.backlogItems = doc.backlogItems;
+function persistNow(): void {
+  if (typeof window === "undefined") return;
+  if (!todoStore.hydrated) return;
+  const dayS = JSON.stringify(pickPersistedDayDocument());
+  if (dayS !== lastWrittenDayJson) {
+    lastWrittenDayJson = dayS;
+    storageSetItem(dayStorageKey(todoStore.dayKey), dayS);
+  }
+  const backlogS = JSON.stringify(pickPersistedBacklogBlob());
+  if (backlogS !== lastWrittenBacklogJson) {
+    lastWrittenBacklogJson = backlogS;
+    storageSetItem(TODO_BACKLOG_STORAGE_KEY, backlogS);
+  }
 }
 
-function syncTodayPersistSnapshot(): void {
-  const doc = pickPersistedDocument();
-  lastWrittenJson = JSON.stringify(doc);
-  storageSetItem(dayStorageKey(todoStore.dayKey), lastWrittenJson);
+function applyLoadedDay(dayKey: string, doc: TodoDayDocumentV3): void {
+  todoStore.dayKey = dayKey;
+  todoStore.items = doc.items;
+}
+
+function syncPersistSnapshots(): void {
+  const dayDoc = pickPersistedDayDocument();
+  lastWrittenDayJson = JSON.stringify(dayDoc);
+  storageSetItem(dayStorageKey(todoStore.dayKey), lastWrittenDayJson);
+  const backlogBlob = pickPersistedBacklogBlob();
+  lastWrittenBacklogJson = JSON.stringify(backlogBlob);
+  storageSetItem(TODO_BACKLOG_STORAGE_KEY, lastWrittenBacklogJson);
 }
 
 function isTodoItem(x: unknown): x is TodoItem {
@@ -362,32 +394,50 @@ function isTodoItem(x: unknown): x is TodoItem {
 }
 
 /** Drops persisted rows with no visible text (empty or whitespace-only). */
-function omitEmptyTodoRows(doc: TodoDayDocumentV2): TodoDayDocumentV2 {
-  const nonempty = (t: TodoItem) => t.text.trim() !== "";
+function todoRowHasVisibleText(t: TodoItem): boolean {
+  return t.text.trim() !== "";
+}
+
+function omitEmptyTodoDayItems(doc: TodoDayDocumentV3): TodoDayDocumentV3 {
   return {
-    items: doc.items.filter(nonempty),
-    backlogItems: doc.backlogItems.filter(nonempty),
+    items: doc.items.filter(todoRowHasVisibleText),
   };
 }
 
-function parseTodoDayDocument(raw: unknown): TodoDayDocumentV2 {
+/** Same normalization as {@link omitEmptyTodoDayItems} for global backlog lists. */
+function omitEmptyBacklogItems(items: TodoItem[]): TodoItem[] {
+  return items.filter(todoRowHasVisibleText);
+}
+
+function parseTodoDayDocumentV3(raw: unknown): TodoDayDocumentV3 {
+  if (!raw || typeof raw !== "object") return { items: [] };
+  const o = raw as Record<string, unknown>;
+  const items = Array.isArray(o.items) ? o.items.filter(isTodoItem) : [];
+  return omitEmptyTodoDayItems({ items });
+}
+
+/** Reads legacy per-day docs that may still include `backlogItems` (stripped by migration). */
+function parseTodoDayDocumentV2(raw: unknown): TodoDayDocumentV2 {
   if (!raw || typeof raw !== "object") return { items: [], backlogItems: [] };
   const o = raw as Record<string, unknown>;
   const items = Array.isArray(o.items) ? o.items.filter(isTodoItem) : [];
   const backlogItems = Array.isArray(o.backlogItems) ? o.backlogItems.filter(isTodoItem) : [];
-  return omitEmptyTodoRows({ items, backlogItems });
+  return {
+    items: items.filter(todoRowHasVisibleText),
+    backlogItems: omitEmptyBacklogItems(backlogItems),
+  };
 }
 
-function readValidatedDayDocument(dayKey: string): TodoDayDocumentV2 {
-  if (typeof window === "undefined") return { items: [], backlogItems: [] };
+function readValidatedDayDocument(dayKey: string): TodoDayDocumentV3 {
+  if (typeof window === "undefined") return { items: [] };
   try {
     const raw = localStorage.getItem(dayStorageKey(dayKey));
-    if (!raw) return { items: [], backlogItems: [] };
+    if (!raw) return { items: [] };
     const parsed = JSON.parse(raw) as unknown;
-    return parseTodoDayDocument(parsed);
+    return parseTodoDayDocumentV3(parsed);
   } catch (e: unknown) {
     log.warn("todo: parse failed for day", dayKey, e);
-    return { items: [], backlogItems: [] };
+    return { items: [] };
   }
 }
 
@@ -408,21 +458,95 @@ function storageSetItemStrict(key: string, value: string): void {
   }
 }
 
+/**
+ * Merges `backlogItems` from every per-day JSON blob into {@link TODO_BACKLOG_STORAGE_KEY} and
+ * rewrites day files to `{ items }` only (v3). Idempotent.
+ */
+function migrateLocalStoragePerDayBacklogToGlobal(): void {
+  if (typeof window === "undefined") return;
+  const seen = new Set<string>();
+  const merged: TodoItem[] = [];
+
+  for (const t of readValidatedGlobalBacklogItems()) {
+    merged.push({ id: t.id, text: t.text, done: t.done });
+    seen.add(t.id);
+  }
+
+  const dayKeys = listLocalStorageKeys()
+    .filter((k) => k.startsWith(TODO_DAY_STORAGE_KEY_PREFIX))
+    .map((k) => k.slice(TODO_DAY_STORAGE_KEY_PREFIX.length))
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    .sort();
+
+  for (const day of dayKeys) {
+    const key = dayStorageKey(day);
+    const raw = localStorage.getItem(key);
+    if (!raw) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== "object") continue;
+    const o = parsed as Record<string, unknown>;
+    const backlogRaw = o.backlogItems;
+    const backlogArr = Array.isArray(backlogRaw) ? backlogRaw.filter(isTodoItem) : [];
+    for (const t of backlogArr) {
+      if (!todoRowHasVisibleText(t)) continue;
+      if (seen.has(t.id)) continue;
+      seen.add(t.id);
+      merged.push({ id: t.id, text: t.text, done: t.done });
+    }
+    const itemsOnly = parseTodoDayDocumentV3(parsed).items;
+    const newDoc: TodoDayDocumentV3 = { items: itemsOnly };
+    const newJson = JSON.stringify(newDoc);
+    if (newJson !== raw || "backlogItems" in o) {
+      storageSetItem(key, newJson);
+    }
+  }
+
+  storageSetItem(
+    TODO_BACKLOG_STORAGE_KEY,
+    JSON.stringify({
+      backlogItems: merged.map((t) => ({ id: t.id, text: t.text, done: t.done })),
+    }),
+  );
+}
+
+function readValidatedGlobalBacklogItems(): TodoItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(TODO_BACKLOG_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      return omitEmptyBacklogItems(parsed.filter(isTodoItem));
+    }
+    if (parsed && typeof parsed === "object" && "backlogItems" in parsed) {
+      const a = (parsed as { backlogItems: unknown }).backlogItems;
+      return Array.isArray(a) ? omitEmptyBacklogItems(a.filter(isTodoItem)) : [];
+    }
+  } catch (e: unknown) {
+    log.warn("todo: parse global backlog failed", e);
+  }
+  return [];
+}
+
 /** Rewrite one day bucket so non-empty incomplete rows are dropped (completed + empty rows stay). */
 function stripPendingFromDayBucket(dayKey: string): void {
   const doc = readValidatedDayDocument(dayKey);
   const items = doc.items;
   const kept = items.filter((t) => t.done || t.text.trim() === "");
   if (kept.length === items.length) return;
-  const yDoc: TodoDayDocumentV2 = {
+  const yDoc: TodoDayDocumentV3 = {
     items: kept.map((t) => ({ id: t.id, text: t.text, done: t.done })),
-    backlogItems: doc.backlogItems.map((t) => ({ id: t.id, text: t.text, done: t.done })),
   };
   storageSetItem(dayStorageKey(dayKey), JSON.stringify(yDoc));
 }
 
 /**
- * Append yesterday’s non-empty incomplete tasks to today and remove them from yesterday’s bucket.
+ * Append yesterday’s non-empty incomplete today-list tasks to today and remove them from yesterday’s bucket.
  * Idempotent per (yesterday → today) via a small marker key so refresh does not duplicate tasks.
  */
 function moveYesterdayPendingIntoToday(): void {
@@ -453,7 +577,7 @@ function moveYesterdayPendingIntoToday(): void {
       done: false,
     });
   }
-  syncTodayPersistSnapshot();
+  syncPersistSnapshots();
 
   stripPendingFromDayBucket(yKey);
 
@@ -463,17 +587,24 @@ function moveYesterdayPendingIntoToday(): void {
 function loadFromStorage(): void {
   if (typeof window === "undefined") return;
   migrateLegacyPersistKeysOnce();
+  migrateLocalStoragePerDayBacklogToGlobal();
   const today = localDayKey();
-  const empty: TodoDayDocumentV2 = { items: [], backlogItems: [] };
+  const emptyDay: TodoDayDocumentV3 = { items: [] };
   try {
+    todoStore.backlogItems = readValidatedGlobalBacklogItems().map((t) => ({
+      id: t.id,
+      text: t.text,
+      done: t.done,
+    }));
     applyLoadedDay(today, readValidatedDayDocument(today));
     moveYesterdayPendingIntoToday();
-    syncTodayPersistSnapshot();
+    syncPersistSnapshots();
   } catch (e: unknown) {
     log.error("todo: failed to load today’s list", e);
-    applyLoadedDay(today, empty);
+    todoStore.backlogItems = [];
+    applyLoadedDay(today, emptyDay);
     moveYesterdayPendingIntoToday();
-    syncTodayPersistSnapshot();
+    syncPersistSnapshots();
   }
   todoStore.hydrated = true;
 }
@@ -485,7 +616,7 @@ function syncCalendarDayIfNeeded(): void {
   flushPersistSync();
   applyLoadedDay(today, readValidatedDayDocument(today));
   moveYesterdayPendingIntoToday();
-  syncTodayPersistSnapshot();
+  syncPersistSnapshots();
 }
 
 // --- bundle export/import (uses persistence helpers above) ---
@@ -514,12 +645,62 @@ function readJsonKey(key: string): unknown {
   }
 }
 
-function parseTodosByDayRecord(raw: unknown): Record<string, TodoDayDocumentV2> {
+function parseTodosByDayRecordV2(raw: unknown): Record<string, TodoDayDocumentV2> {
   if (!isRecord(raw)) return {};
   const out: Record<string, TodoDayDocumentV2> = {};
   for (const [day, doc] of Object.entries(raw)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
-    out[day] = parseTodoDayDocument(doc);
+    out[day] = parseTodoDayDocumentV2(doc);
+  }
+  return out;
+}
+
+function stripV2DaysToV3(byDay: Record<string, TodoDayDocumentV2>): Record<string, TodoDayDocumentV3> {
+  const out: Record<string, TodoDayDocumentV3> = {};
+  for (const [day, doc] of Object.entries(byDay)) {
+    out[day] = { items: doc.items.map((t) => ({ id: t.id, text: t.text, done: t.done })) };
+  }
+  return out;
+}
+
+/** Per-day backlog rows in calendar-day order; skips duplicate ids (later wins ignored). */
+function mergePerDayBacklogsFromV2(byDay: Record<string, TodoDayDocumentV2>): TodoItem[] {
+  const seen = new Set<string>();
+  const out: TodoItem[] = [];
+  const days = Object.keys(byDay)
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    .sort();
+  for (const day of days) {
+    for (const t of byDay[day]!.backlogItems) {
+      if (!todoRowHasVisibleText(t)) continue;
+      if (seen.has(t.id)) continue;
+      seen.add(t.id);
+      out.push({ id: t.id, text: t.text, done: t.done });
+    }
+  }
+  return out;
+}
+
+function parseTopLevelBacklog(raw: unknown): TodoItem[] {
+  if (!Array.isArray(raw)) return [];
+  return omitEmptyBacklogItems(raw.filter(isTodoItem));
+}
+
+/** Top-level backlog first, then per-day rows, deduping by id. */
+function mergeTopAndPerDayBacklogs(top: TodoItem[], fromDays: TodoItem[]): TodoItem[] {
+  const seen = new Set<string>();
+  const out: TodoItem[] = [];
+  for (const t of top) {
+    if (!todoRowHasVisibleText(t)) continue;
+    if (seen.has(t.id)) continue;
+    seen.add(t.id);
+    out.push({ id: t.id, text: t.text, done: t.done });
+  }
+  for (const t of fromDays) {
+    if (!todoRowHasVisibleText(t)) continue;
+    if (seen.has(t.id)) continue;
+    seen.add(t.id);
+    out.push({ id: t.id, text: t.text, done: t.done });
   }
   return out;
 }
@@ -535,8 +716,8 @@ function parseRolloverMarkersRecord(raw: unknown): Record<string, string> {
   return out;
 }
 
-/** Normalize any supported todo import slice to {@link TodoExportV2}. */
-export function migrateTodoSliceToLatest(data: unknown): TodoExportV2 {
+/** Normalize any supported todo import slice to {@link TodoExportV3}. */
+export function migrateTodoSliceToLatest(data: unknown): TodoExportV3 {
   log.debug("todo migration: start");
   if (!isRecord(data)) {
     log.error("todo migration: not an object");
@@ -551,18 +732,27 @@ export function migrateTodoSliceToLatest(data: unknown): TodoExportV2 {
         ? Object.keys(data.todoRolloverMarkers).length
         : 0,
   });
-  if (v !== undefined && v !== 1 && v !== TODO_EXPORT_VERSION) {
+  if (v !== undefined && v !== 1 && v !== 2 && v !== TODO_EXPORT_VERSION) {
     log.error("todo migration: unsupported version", { version: v });
     throw new Error(
       `todo: unsupported export slice version ${String(v)}. Update the app or re-export your data.`,
     );
   }
-  const todosByDay = parseTodosByDayRecord(data.todosByDay);
+
+  const todosByDayV2 = parseTodosByDayRecordV2(data.todosByDay);
+  const fromDaysMerged = mergePerDayBacklogsFromV2(todosByDayV2);
+  const todosByDay = stripV2DaysToV3(todosByDayV2);
   const todoRolloverMarkers = parseRolloverMarkersRecord(data.todoRolloverMarkers);
+
+  const topMerged = Array.isArray(data.backlogItems) ? parseTopLevelBacklog(data.backlogItems) : [];
+  const backlogItems = mergeTopAndPerDayBacklogs(topMerged, fromDaysMerged);
+
   let itemCount = 0;
   for (const doc of Object.values(todosByDay)) {
-    itemCount += doc.items.length + doc.backlogItems.length;
+    itemCount += doc.items.length;
   }
+  itemCount += backlogItems.length;
+
   log.debug("todo migration: ok", {
     dayCount: Object.keys(todosByDay).length,
     itemCount,
@@ -571,26 +761,28 @@ export function migrateTodoSliceToLatest(data: unknown): TodoExportV2 {
   return {
     version: TODO_EXPORT_VERSION,
     todosByDay,
+    backlogItems,
     todoRolloverMarkers,
   };
 }
 
-function collectTodoExportFromLocalStorage(): TodoExportV2 {
+function collectTodoExportFromLocalStorage(): TodoExportV3 {
   if (typeof window === "undefined") {
     return {
       version: TODO_EXPORT_VERSION,
       todosByDay: {},
+      backlogItems: [],
       todoRolloverMarkers: {},
     };
   }
-  const todosByDay: Record<string, TodoDayDocumentV2> = {};
+  const todosByDay: Record<string, TodoDayDocumentV3> = {};
   const todoRolloverMarkers: Record<string, string> = {};
   for (const key of listLocalStorageKeys()) {
     if (key.startsWith(TODO_DAY_STORAGE_KEY_PREFIX)) {
       const day = key.slice(TODO_DAY_STORAGE_KEY_PREFIX.length);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
       const parsed = readJsonKey(key);
-      todosByDay[day] = parseTodoDayDocument(parsed);
+      todosByDay[day] = parseTodoDayDocumentV3(parsed);
     } else if (key.startsWith(TODO_AUTO_ROLLOVER_MARKER_PREFIX)) {
       const yKey = key.slice(TODO_AUTO_ROLLOVER_MARKER_PREFIX.length);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(yKey)) continue;
@@ -602,9 +794,11 @@ function collectTodoExportFromLocalStorage(): TodoExportV2 {
       }
     }
   }
+  const backlogItems = readValidatedGlobalBacklogItems();
   return {
     version: TODO_EXPORT_VERSION,
     todosByDay,
+    backlogItems,
     todoRolloverMarkers,
   };
 }
@@ -614,7 +808,8 @@ function clearTodoRelatedStorageKeys(): void {
   for (const key of listLocalStorageKeys()) {
     if (
       key.startsWith(TODO_DAY_STORAGE_KEY_PREFIX) ||
-      key.startsWith(TODO_AUTO_ROLLOVER_MARKER_PREFIX)
+      key.startsWith(TODO_AUTO_ROLLOVER_MARKER_PREFIX) ||
+      key === TODO_BACKLOG_STORAGE_KEY
     ) {
       toRemove.push(key);
     }
@@ -628,7 +823,7 @@ function clearTodoRelatedStorageKeys(): void {
   }
 }
 
-/** Synchronous write of today’s todo document (clears debounce). Use before export/download. */
+/** Synchronous write of persisted todo state (clears debounce). Use before export/download. */
 export function flushTodoPersistToStorage(): void {
   flushPersistSync();
 }
