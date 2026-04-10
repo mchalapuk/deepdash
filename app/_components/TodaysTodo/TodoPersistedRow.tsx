@@ -147,28 +147,30 @@ export function TodoPersistedRow({
             flexShrink: 0,
             marginTop: 4,
           }}
-        >
-          <ActionIcon
-            variant="subtle"
-            color="white"
-            size="sm"
-            radius="sm"
-            aria-label={listKind === "today" ? "Move to backlog" : "Move to today"}
-            onClick={() =>
-              listKind === "today"
-                ? todoActions.moveItemToBacklog(id)
-                : todoActions.moveItemToToday(id)
-            }
-            style={{ flexShrink: 0 }}
-            onFocus={onIconFocus}
-            onBlur={onIconBlur}
-          >
-            {listKind === "today" ? (
-              <IconArchive size={14} stroke={1} />
-            ) : (
-              <IconCalendarPlus size={14} stroke={1} />
-            )}
-          </ActionIcon>
+        > 
+          {!done && (
+            <ActionIcon
+              variant="subtle"
+              color="white"
+              size="sm"
+              radius="sm"
+              aria-label={listKind === "today" ? "Move to backlog" : "Move to today"}
+              onClick={() =>
+                listKind === "today"
+                  ? todoActions.moveItemToBacklog(id)
+                  : todoActions.moveItemToToday(id)
+              }
+              style={{ flexShrink: 0 }}
+              onFocus={onIconFocus}
+              onBlur={onIconBlur}
+            >
+              {listKind === "today" ? (
+                <IconArchive size={14} stroke={1} />
+              ) : (
+                <IconCalendarPlus size={14} stroke={1} />
+              )}
+            </ActionIcon>
+          )}
           <ActionIcon
             variant="subtle"
             color="white"
