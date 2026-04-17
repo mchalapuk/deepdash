@@ -176,25 +176,42 @@ export function useIsPaused(): boolean {
 
 export function useCurrentPhaseExpired(): boolean {
   const snap = useSnapshot(pomodoroStore);
-  const nowMs = useWallNowMs(phaseRunNeedsWallClock(snap.activePhaseRun));
+  const needsWallClock = phaseRunNeedsWallClock(snap.activePhaseRun);
+  const nowMs = useWallNowMs(needsWallClock);
+  const r = snap.activePhaseRun;
+  if (r?.openPauseStartMs != null) {
+    return remainingCountdownMs(r, r.openPauseStartMs) <= 0;
+  }
   return nowMs >= flipClockEndsAtMsAt(snap, nowMs);
 }
 
 /** Seconds until the deadline; negative after the wall-clock deadline while the phase stays active. */
 export function useSecondsRemaining(): number {
   const snap = useSnapshot(pomodoroStore);
-  const nowMs = useWallNowMs(phaseRunNeedsWallClock(snap.activePhaseRun));
+  const needsWallClock = phaseRunNeedsWallClock(snap.activePhaseRun);
+  const nowMs = useWallNowMs(needsWallClock);
+  const r = snap.activePhaseRun;
+  if (r?.openPauseStartMs != null) {
+    return Math.ceil(remainingCountdownMs(r, r.openPauseStartMs) / 1000);
+  }
   const endsAt = flipClockEndsAtMsAt(snap, nowMs);
   return Math.ceil((endsAt - nowMs) / 1000);
 }
 
 /**
- * Same wall-clock source as {@link useSecondsRemaining}, but flips run ~{@link FLIP_DISPLAY_LEAD_MS}
- * early so the ~0.7s animation finishes closer to the real second boundary.
+ * Same source as {@link useSecondsRemaining}: wall clock while running, frozen remaining while
+ * paused. When running, flips lead by ~{@link FLIP_DISPLAY_LEAD_MS} so the animation finishes
+ * closer to the real second boundary.
  */
 export function useFlipSecondsRemaining(): number {
   const snap = useSnapshot(pomodoroStore);
-  const nowMs = useWallNowMs(phaseRunNeedsWallClock(snap.activePhaseRun));
+  const needsWallClock = phaseRunNeedsWallClock(snap.activePhaseRun);
+  const nowMs = useWallNowMs(needsWallClock);
+  const r = snap.activePhaseRun;
+  if (r?.openPauseStartMs != null) {
+    const remMs = remainingCountdownMs(r, r.openPauseStartMs);
+    return Math.ceil((remMs - FLIP_DISPLAY_LEAD_MS) / 1000);
+  }
   const endsAt = flipClockEndsAtMsAt(snap, nowMs);
   const remMs = endsAt - nowMs;
   return Math.ceil((remMs - FLIP_DISPLAY_LEAD_MS) / 1000);

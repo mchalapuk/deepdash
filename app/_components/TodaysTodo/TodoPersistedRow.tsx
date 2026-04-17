@@ -6,6 +6,7 @@ import {
   Checkbox,
   Group,
   Textarea,
+  Tooltip,
 } from "@mantine/core";
 import {
   IconArchive,
@@ -79,6 +80,10 @@ export function TodoPersistedRow({
   const onIconFocus = useCallback(() => setIconFocused(true), []);
   const onIconBlur = useCallback(() => setIconFocused(false), []);
 
+  const moveLabel =
+    listKind === "today" ? "Move to backlog" : "Move to today";
+  const reorderLabel = "Drag to reorder";
+
   return (
     <Box
       ref={bindRowRoot}
@@ -96,7 +101,7 @@ export function TodoPersistedRow({
         opacity: isHighlighted ? 1 : 0.6,
       }}
     >
-      <Group wrap="nowrap" gap={7} align="flex-start" w="100%" pl={6}>
+      <Group wrap="nowrap" gap={7} align="flex-start" w="100%" pl={6} pr={4}>
         <Checkbox
           checked={done}
           onChange={() => todoActions.toggleDone(id)}
@@ -149,51 +154,76 @@ export function TodoPersistedRow({
           }}
         > 
           {!done && (
+            <Tooltip
+              label={moveLabel}
+              position="top-end"
+              offset={{ mainAxis: 7, alignmentAxis: -24 }}
+              withArrow
+              arrowOffset={34}
+              arrowSize={8}
+              events={{ hover: true, focus: true, touch: true }}
+              color="darker.7"
+              openDelay={500}
+              transitionProps={{ transition: 'fade-up', duration: 300 }}
+            >
+              <ActionIcon
+                variant="subtle"
+                color="white"
+                size="sm"
+                radius="sm"
+                aria-label={moveLabel}
+                onClick={() =>
+                  listKind === "today"
+                    ? todoActions.moveItemToBacklog(id)
+                    : todoActions.moveItemToToday(id)
+                }
+                style={{ flexShrink: 0 }}
+                onFocus={onIconFocus}
+                onBlur={onIconBlur}
+              >
+                {listKind === "today" ? (
+                  <IconArchive size={14} stroke={1} />
+                ) : (
+                  <IconCalendarPlus size={14} stroke={1} />
+                )}
+              </ActionIcon>
+            </Tooltip>
+          )}
+          <Tooltip
+            label={reorderLabel}
+            position="top-end"
+            withArrow
+            arrowOffset={10}
+            arrowSize={8}
+            events={{ hover: true, focus: true, touch: true }}
+            color="darker.7"
+            openDelay={500}
+            transitionProps={{ transition: 'fade-up', duration: 300 }}
+          >
             <ActionIcon
               variant="subtle"
               color="white"
               size="sm"
               radius="sm"
-              aria-label={listKind === "today" ? "Move to backlog" : "Move to today"}
-              onClick={() =>
-                listKind === "today"
-                  ? todoActions.moveItemToBacklog(id)
-                  : todoActions.moveItemToToday(id)
-              }
-              style={{ flexShrink: 0 }}
+              aria-label={reorderLabel}
+              onPointerDown={e => {
+                gripPointerDown(e);
+                if (document.activeElement instanceof HTMLElement) {
+                  (document.activeElement as HTMLElement).blur();
+                }
+              }}
+              style={{
+                flexShrink: 0,
+                touchAction: "none",
+                cursor: isDragging ? "grabbing" : "grab",
+              }}
               onFocus={onIconFocus}
               onBlur={onIconBlur}
+              classNames={{ root: "focus:outline-none" }}
             >
-              {listKind === "today" ? (
-                <IconArchive size={14} stroke={1} />
-              ) : (
-                <IconCalendarPlus size={14} stroke={1} />
-              )}
+              <IconGripVertical size={14} stroke={1} />
             </ActionIcon>
-          )}
-          <ActionIcon
-            variant="subtle"
-            color="white"
-            size="sm"
-            radius="sm"
-            aria-label="Drag to reorder"
-            onPointerDown={e => {
-              gripPointerDown(e);
-              if (document.activeElement instanceof HTMLElement) {
-                (document.activeElement as HTMLElement).blur();
-              }
-            }}
-            style={{
-              flexShrink: 0,
-              touchAction: "none",
-              cursor: isDragging ? "grabbing" : "grab",
-            }}
-            onFocus={onIconFocus}
-            onBlur={onIconBlur}
-            classNames={{ root: "focus:outline-none" }}
-          >
-            <IconGripVertical size={14} stroke={1} />
-          </ActionIcon>
+          </Tooltip>
         </Group>
       </Group>
     </Box>

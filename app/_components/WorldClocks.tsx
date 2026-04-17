@@ -10,6 +10,7 @@ import {
   Text,
   ScrollArea,
   Space,
+  Tooltip,
   VisuallyHidden,
 } from "@mantine/core";
 import { IconPlus, IconTrash, IconX } from "@tabler/icons-react";
@@ -186,6 +187,7 @@ function WorldClockCard({
   const gmt = formatGmtOffsetLabel(now, timeZone);
   const dayPeriod = formatZonedDayPeriod(now, timeZone);
   const extras = additionalLabelLines(additionalLabel);
+  const removeLabel = `Remove clock`;
 
   return (
     <Box w="154px" style={{ overflow: "hidden" }}>
@@ -214,16 +216,28 @@ function WorldClockCard({
             </Text>
             {onRemove ? (
               <div className="w-0 h-0 overflow-visible">
-                <ActionIcon
-                  variant="subtle"
-                  color="gray.7"
-                  size="xs"
-                  onClick={onRemove}
-                  aria-label={`Remove clock ${timeZone}`}
-                  className="relative translate-y-[-60%] translate-x-[-4px]"
+                <Tooltip
+                  label={removeLabel}
+                  position="right"
+                  withArrow
+                  arrowOffset={10}
+                  arrowSize={8}
+                  events={{ hover: true, focus: true, touch: true }}
+                  color="darker.7"
+                  openDelay={500}
+                  transitionProps={{ transition: 'fade-right', duration: 300 }}
                 >
-                  <IconTrash size={16} stroke={2} />
-                </ActionIcon>
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray.6"
+                    size="xs"
+                    onClick={onRemove}
+                    aria-label={removeLabel}
+                    className="relative translate-y-[-60%] translate-x-[-4px] opacity-75"
+                  >
+                    <IconTrash size={16} stroke={2} />
+                  </ActionIcon>
+                </Tooltip>
               </div>
             ) : null}
           </Group>
@@ -257,7 +271,6 @@ type AddClockButtonProps = {
  * Holds its own state/effects; parent passes only validation context.
  */
 function AddClockButton({ implicitZoneSet, clocks }: AddClockButtonProps) {
-  const pomodoroPhase = useCurrentPhase();
   const primaryColor = usePhaseColor();
   const {
     expanded,
@@ -272,10 +285,11 @@ function AddClockButton({ implicitZoneSet, clocks }: AddClockButtonProps) {
     onDropdownOpen,
     onDropdownClose,
     onBlur,
-    searchPlaceholder,
-    addAriaLabel,
-    cancelAriaLabel,
   } = useWorldClockAddColumn({ implicitZoneSet, clocks });
+
+  const searchPlaceholder = "Search IANA time zone";
+  const addAriaLabel = "Add clock";
+  const cancelAriaLabel = "Cancel";
 
   return (
     <Box
@@ -313,30 +327,54 @@ function AddClockButton({ implicitZoneSet, clocks }: AddClockButtonProps) {
             autoComplete="off"
             rightSectionPointerEvents="all"
             rightSection={
-              <ActionIcon
-                variant="subtle"
-                size="sm"
-                color={primaryColor}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={onCancel}
-                aria-label={cancelAriaLabel}
+              <Tooltip
+                label={cancelAriaLabel}
+                position="top-end"
+                withArrow
+                arrowOffset={10}
+                arrowSize={8}
+                events={{ hover: true, focus: true, touch: true }}
+                color="darker.7"
+                openDelay={500}
+                transitionProps={{ transition: 'fade-up', duration: 300 }}
               >
-                <IconX size={16} stroke={2} />
-              </ActionIcon>
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  color={primaryColor}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={onCancel}
+                  aria-label={cancelAriaLabel}
+                >
+                  <IconX size={16} stroke={2} />
+                </ActionIcon>
+              </Tooltip>
             }
           />
         </Box>
       ) : (
-        <ActionIcon
-          variant="light"
-          size="lg"
-          radius="md"
-          color={primaryColor}
-          onClick={onExpand}
-          aria-label={addAriaLabel}
+        <Tooltip
+          label={addAriaLabel}
+          position="top-end"
+          withArrow
+          arrowOffset={20}
+          arrowSize={8}
+          events={{ hover: true, focus: true, touch: true }}
+          color="darker.7"
+          transitionProps={{ transition: 'fade-up', duration: 300 }}
+          openDelay={500}
         >
-          <IconPlus size={20} stroke={2} />
-        </ActionIcon>
+          <ActionIcon
+            variant="light"
+            size="lg"
+            radius="md"
+            color={primaryColor}
+            onClick={onExpand}
+            aria-label={addAriaLabel}
+          >
+            <IconPlus size={20} stroke={2} />
+          </ActionIcon>
+        </Tooltip>
       )}
     </Box>
   );
@@ -560,9 +598,6 @@ function useWorldClockAddColumn({
     onDropdownOpen,
     onDropdownClose,
     onBlur: onAutocompleteBlur,
-    searchPlaceholder: "Search IANA time zone",
-    addAriaLabel: "Add world clock",
-    cancelAriaLabel: "Cancel adding clock",
   };
 }
 

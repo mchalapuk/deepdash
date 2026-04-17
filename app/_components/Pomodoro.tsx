@@ -5,9 +5,10 @@ import {
   Box,
   Button,
   Group,
+  Paper,
   Stack,
   Tabs,
-  Paper,
+  Tooltip,
 } from "@mantine/core";
 import {
   IconChevronDown,
@@ -98,6 +99,8 @@ function Countdown({ running }: { running: boolean }) {
 
   /** Steppers visible only when no active phase */
   const showSteppers = !running;
+  const addMinuteLabel = "+1 minute";
+  const removeMinuteLabel = "-1 minute";
 
   return (
     <Group
@@ -130,26 +133,50 @@ function Countdown({ running }: { running: boolean }) {
       >
         {showSteppers ? (
           <Stack gap={2} align="center" ml="-3.5rem">
-            <ActionIcon
-              variant="transparent"
-              size="lg"
-              radius="md"
-              c="gray.3"
-              onClick={() => pomodoroActions.stepPhaseDurationMinutes(1)}
-              aria-label="Add one minute to this phase"
+            <Tooltip
+              label={addMinuteLabel}
+              position="right"
+              withArrow
+              arrowOffset={20}
+              arrowSize={8}
+              events={{ hover: true, focus: true, touch: true }}
+              color="darker.7"
+              openDelay={500}
+              transitionProps={{ transition: 'fade-right', duration: 300 }}
             >
-              <IconChevronUp size={22} stroke={2} />
-            </ActionIcon>
-            <ActionIcon
-              variant="transparent"
-              size="lg"
-              radius="md"
-              c="gray.3"
-              onClick={() => pomodoroActions.stepPhaseDurationMinutes(-1)}
-              aria-label="Remove one minute from this phase"
+              <ActionIcon
+                variant="transparent"
+                size="lg"
+                radius="md"
+                c="gray.3"
+                onClick={() => pomodoroActions.stepPhaseDurationMinutes(1)}
+                aria-label={addMinuteLabel}
+              >
+                <IconChevronUp size={22} stroke={2} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip
+              label={removeMinuteLabel}
+              position="right"
+              withArrow
+              arrowOffset={20}
+              arrowSize={8}
+              events={{ hover: true, focus: true, touch: true }}
+              color="darker.7"
+              openDelay={500}
+              transitionProps={{ transition: 'fade-right', duration: 300 }}
             >
-              <IconChevronDown size={22} stroke={2} />
-            </ActionIcon>
+              <ActionIcon
+                variant="transparent"
+                size="lg"
+                radius="md"
+                c="gray.3"
+                onClick={() => pomodoroActions.stepPhaseDurationMinutes(-1)}
+                aria-label={removeMinuteLabel}
+              >
+                <IconChevronDown size={22} stroke={2} />
+              </ActionIcon>
+            </Tooltip>
           </Stack>
         ) : null}
       </Box>
@@ -185,6 +212,7 @@ function PrimaryButton({ phase, running, paused }: { phase: PomodoroPhase, runni
 
   /** Skip visible only while a run exists and the deadline has not been crossed. */
   const showSkip = (running || paused) && !expired;
+  const skipLabel = "Fast forward";
 
   const sideControlSlotPx = 42;
 
@@ -219,17 +247,30 @@ function PrimaryButton({ phase, running, paused }: { phase: PomodoroPhase, runni
         style={{ width: sideControlSlotPx, flexShrink: 0 }}
         className="flex justify-center"
       >
-        <ActionIcon
-          variant="transparent"
-          size="xl"
-          radius="md"
-          c="gray.3"
-          onClick={pomodoroActions.nextPhase}
-          aria-label="Skip to next phase"
-          className={showSkip ? "" : "invisible pointer-events-none"}
+        <Tooltip
+          label={skipLabel}
+          position="right"
+          offset={-1}
+          withArrow
+          arrowOffset={20}
+          arrowSize={8}
+          events={{ hover: true, focus: true, touch: true }}
+          color="darker.7"
+          transitionProps={{ transition: 'fade-right', duration: 300 }}
+          openDelay={500}
         >
-          <IconPlayerSkipForward size={26} stroke={2} title="Skip to next phase" />
-        </ActionIcon>
+          <ActionIcon
+            variant="transparent"
+            size="xl"
+            radius="md"
+            c="gray.3"
+            onClick={pomodoroActions.nextPhase}
+            aria-label={skipLabel}
+            className={showSkip ? "" : "invisible pointer-events-none"}
+          >
+            <IconPlayerSkipForward size={26} stroke={2} />
+          </ActionIcon>
+        </Tooltip>
       </Box>
     </Group>
   )
