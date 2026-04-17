@@ -17,7 +17,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
   );
 
   useLayoutEffect(() => {
-    maybeApplyFirstRunSeedBundle();
+    void maybeApplyFirstRunSeedBundle();
   }, []);
 
   useEffect(() => {

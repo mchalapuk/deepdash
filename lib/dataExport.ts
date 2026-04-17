@@ -34,17 +34,17 @@ export type DeepdashExportLatest = {
 };
 
 /** Builds the bundle from live stores / `localStorage` (browser only). */
-export function collectDeepdashExport(): DeepdashExportLatest {
+export async function collectDeepdashExport(): Promise<DeepdashExportLatest> {
   if (typeof localStorage === "undefined") {
     throw new Error("Export is only available in the browser.");
   }
-  flushTodoPersistToStorage();
+  await flushTodoPersistToStorage();
   return {
     version: CURRENT_DEEPDASH_EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     worldClock: worldClockActions.exportData(),
     pomodoro: pomodoroActions.exportData(),
-    todo: todoActions.exportData(),
+    todo: await todoActions.exportData(),
     calculator: calculatorActions.exportData(),
   };
 }
@@ -83,7 +83,7 @@ export type DeepdashImportErrorPhase = "bundle" | "migration" | "import" | "roll
  * Full client pipeline: `JSON.parse` → migrate all slices → apply with rollback.
  * Does not reload the page.
  */
-export function runDeepdashJsonImportFromText(text: string): DeepdashJsonImportRunResult {
+export async function runDeepdashJsonImportFromText(text: string): Promise<DeepdashJsonImportRunResult> {
   log.debug("deepdash import pipeline: JSON.parse");
   let raw: unknown;
   try {
@@ -111,7 +111,7 @@ export function runDeepdashJsonImportFromText(text: string): DeepdashJsonImportR
     calculator: mig.calculator,
   };
 
-  const applied = applyDeepdashImportWithRollback(latest);
+  const applied = await applyDeepdashImportWithRollback(latest);
   if (!applied.ok) {
     return { ok: false, errors: applied.errors };
   }
@@ -212,13 +212,13 @@ export function formatDeepdashImportErrorsForUser(errors: DeepdashImportError[])
 }
 
 /** Applies a migrated bundle by delegating to each store (no rollback). Used for rollback replay only. */
-function applyDeepdashImport(data: DeepdashExportLatest): void {
+async function applyDeepdashImport(data: DeepdashExportLatest): Promise<void> {
   if (typeof localStorage === "undefined") {
     throw new Error("Import is only available in the browser.");
   }
   worldClockActions.importData(data.worldClock);
   pomodoroActions.importData(data.pomodoro);
-  todoActions.importData(data.todo);
+  await todoActions.importData(data.todo);
   calculatorActions.importData(data.calculator);
 }
 
@@ -229,13 +229,13 @@ type ApplyDeepdashImportWithRollbackResult =
 /**
  * Snapshots current data, applies `data` module-by-module; on first failure rolls back the snapshot once (best-effort).
  */
-export function applyDeepdashImportWithRollback(
+export async function applyDeepdashImportWithRollback(
   data: DeepdashExportLatest,
-): ApplyDeepdashImportWithRollbackResult {
+): Promise<ApplyDeepdashImportWithRollbackResult> {
   log.debug("deepdash import phase: capturing backup");
   let backup: DeepdashExportLatest;
   try {
-    backup = collectDeepdashExport();
+    backup = await collectDeepdashExport();
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
     log.error("deepdash import phase: backup snapshot failed", e);
@@ -250,11 +250,11 @@ export function applyDeepdashImportWithRollback(
     };
   }
 
-  const steps: { module: DeepdashImportModuleId; run: () => void }[] = [
-    { module: "worldClock", run: () => worldClockActions.importData(data.worldClock) },
-    { module: "pomodoro", run: () => pomodoroActions.importData(data.pomodoro) },
-    { module: "todo", run: () => todoActions.importData(data.todo) },
-    { module: "calculator", run: () => calculatorActions.importData(data.calculator) },
+  const steps: { module: DeepdashImportModuleId; run: () => Promise<void> }[] = [
+    { module: "worldClock", run: async () => worldClockActions.importData(data.worldClock) },
+    { module: "pomodoro", run: async () => pomodoroActions.importData(data.pomodoro) },
+    { module: "todo", run: async () => todoActions.importData(data.todo) },
+    { module: "calculator", run: async () => calculatorActions.importData(data.calculator) },
   ];
 
   let importFailure: { module: DeepdashImportModuleId; message: string } | null = null;
@@ -262,7 +262,7 @@ export function applyDeepdashImportWithRollback(
   for (const { module, run } of steps) {
     try {
       log.debug(`deepdash import phase: applying ${module}`);
-      run();
+      await run();
       log.debug(`deepdash import phase: ${module} applied`);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -279,7 +279,7 @@ export function applyDeepdashImportWithRollback(
 
   try {
     log.warn("deepdash import phase: rolling back to pre-import snapshot");
-    applyDeepdashImport(backup);
+    await applyDeepdashImport(backup);
     log.warn("deepdash import phase: rollback finished");
   } catch (rb: unknown) {
     const rbMsg = rb instanceof Error ? rb.message : String(rb);
@@ -347,7 +347,6 @@ function extractSlicePayloads(raw: Record<string, unknown>): {
       ? raw.todo
       : {
           todosByDay: raw.todosByDay ?? {},
-          todoRolloverMarkers: raw.todoRolloverMarkers ?? {},
         };
 
   const calculatorPayload = raw.calculator != null ? raw.calculator : {};

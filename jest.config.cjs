@@ -1,6 +1,7 @@
 /** @type {import("jest").Config} */
 module.exports = {
   testEnvironment: "node",
+  setupFilesAfterEnv: ["<rootDir>/jest.setup.cjs"],
   roots: ["<rootDir>"],
   testMatch: ["**/__tests__/**/*.test.ts"],
   moduleNameMapper: {

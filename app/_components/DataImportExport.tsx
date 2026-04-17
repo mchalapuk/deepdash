@@ -57,22 +57,24 @@ function useDataImportExport(): [
   const fileRef = useRef<HTMLInputElement>(null);
 
   const onExport = useCallback(() => {
-    try {
-      const data = collectDeepdashExport();
-      downloadDeepdashJson(data);
-      notifications.show({
-        title: "Export ready",
-        message: "Your data was downloaded as JSON.",
-        color: "green",
-      });
-    } catch (e: unknown) {
-      log.error("export failed", e);
-      notifications.show({
-        title: "Export failed",
-        message: e instanceof Error ? e.message : "Could not export data.",
-        color: "red",
-      });
-    }
+    void (async () => {
+      try {
+        const data = await collectDeepdashExport();
+        downloadDeepdashJson(data);
+        notifications.show({
+          title: "Export ready",
+          message: "Your data was downloaded as JSON.",
+          color: "green",
+        });
+      } catch (e: unknown) {
+        log.error("export failed", e);
+        notifications.show({
+          title: "Export failed",
+          message: e instanceof Error ? e.message : "Could not export data.",
+          color: "red",
+        });
+      }
+    })();
   }, []);
 
   const onPickImportFile = useCallback(() => {
@@ -87,7 +89,7 @@ function useDataImportExport(): [
     void (async () => {
       try {
         const text = await file.text();
-        const result = runDeepdashJsonImportFromText(text);
+        const result = await runDeepdashJsonImportFromText(text);
         if (!result.ok) {
           log.error("import failed", result.errors);
           notifications.show({

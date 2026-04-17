@@ -5,17 +5,7 @@ import {
   type DeepdashExportLatest,
 } from "@/lib/dataExport";
 import log from "@/lib/logger";
-import {
-  CALCULATOR_STORAGE_KEY,
-  FIRST_RUN_SEED_HANDLED_KEY,
-  migrateLegacyPersistKeysOnce,
-  POMODORO_CONFIG_KEY,
-  POMODORO_LOGS_KEY,
-  TODO_AUTO_ROLLOVER_MARKER_PREFIX,
-  TODO_BACKLOG_STORAGE_KEY,
-  TODO_DAY_STORAGE_KEY_PREFIX,
-  WORLD_CLOCK_STORAGE_KEY,
-} from "@/lib/persistKeys";
+import { FIRST_RUN_SEED_HANDLED_KEY, migrateLegacyPersistKeysOnce, WORLD_CLOCK_STORAGE_KEY } from "@/lib/persistKeys";
 
 /**
  * Demo bundle for a blank browser profile. Pomodoro uses defaults (empty slice migrates to defaults).
@@ -62,7 +52,6 @@ export function buildFirstRunSeedBundle(): DeepdashExportLatest {
         },
       },
       backlogItems: [],
-      todoRolloverMarkers: {},
     },
     calculator: {
       version: 1,
@@ -84,23 +73,7 @@ export function buildFirstRunSeedBundle(): DeepdashExportLatest {
 }
 
 function hasAnyPersistedDeepdashData(): boolean {
-  const ls = localStorage;
-  if (ls.getItem(WORLD_CLOCK_STORAGE_KEY) != null) return true;
-  if (ls.getItem(CALCULATOR_STORAGE_KEY) != null) return true;
-  if (ls.getItem(POMODORO_CONFIG_KEY) != null) return true;
-  if (ls.getItem(POMODORO_LOGS_KEY) != null) return true;
-  for (let i = 0; i < ls.length; i++) {
-    const k = ls.key(i);
-    if (!k) continue;
-    if (
-      k.startsWith(TODO_DAY_STORAGE_KEY_PREFIX) ||
-      k.startsWith(TODO_AUTO_ROLLOVER_MARKER_PREFIX) ||
-      k === TODO_BACKLOG_STORAGE_KEY
-    ) {
-      return true;
-    }
-  }
-  return false;
+  return localStorage.getItem(WORLD_CLOCK_STORAGE_KEY) != null;
 }
 
 function markSeedHandled(): void {
@@ -113,9 +86,9 @@ function markSeedHandled(): void {
 
 /**
  * On a blank profile, applies {@link buildFirstRunSeedBundle} via the same path as JSON import.
- * Runs in `useLayoutEffect` so `localStorage` is populated before feature store `useEffect` inits read it.
+ * Await this before mounting feature UI so stores see seeded storage (including IndexedDB todos).
  */
-export function maybeApplyFirstRunSeedBundle(): void {
+export async function maybeApplyFirstRunSeedBundle(): Promise<void> {
   if (typeof window === "undefined") return;
   migrateLegacyPersistKeysOnce();
   if (localStorage.getItem(FIRST_RUN_SEED_HANDLED_KEY) != null) return;
@@ -123,7 +96,7 @@ export function maybeApplyFirstRunSeedBundle(): void {
     markSeedHandled();
     return;
   }
-  const applied = applyDeepdashImportWithRollback(buildFirstRunSeedBundle());
+  const applied = await applyDeepdashImportWithRollback(buildFirstRunSeedBundle());
   if (applied.ok) {
     markSeedHandled();
     return;

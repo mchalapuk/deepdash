@@ -16,6 +16,7 @@ import {
   type DeepdashExportLatest,
 } from "@/lib/dataExport";
 import { migrateTodoSliceToLatest } from "@/app/_stores/todoStore";
+import { __resetTodoDatabaseForTests } from "@/lib/todoIndexedDb";
 
 /** Asserts migration succeeds; mirrors the former `migrateImportToLatest` helper for tests. */
 function expectMigratedBundle(raw: unknown): DeepdashExportLatest {
@@ -74,9 +75,6 @@ describe("dataExport migrations", () => {
           },
         },
         backlogItems: [],
-        todoRolloverMarkers: {
-          "2026-04-03": "2026-04-04",
-        },
       },
       calculator: {
         version: 1,
@@ -102,7 +100,6 @@ describe("dataExport migrations", () => {
         logs: { days: {} },
       },
       todosByDay: {},
-      todoRolloverMarkers: {},
       calculator: { expression: "", history: [] },
     };
 
@@ -115,7 +112,6 @@ describe("dataExport migrations", () => {
       version: 3,
       todosByDay: {},
       backlogItems: [],
-      todoRolloverMarkers: {},
     });
     expect(result.calculator.expression).toBe("");
   });
@@ -144,7 +140,7 @@ describe("dataExport migrations", () => {
       exportedAt: "2026-01-01T00:00:00.000Z",
       worldClock: { version: 99, clocks: [] },
       pomodoro: { version: 1, config: {}, logs: { days: {} } },
-      todo: { version: 3, todosByDay: {}, backlogItems: [], todoRolloverMarkers: {} },
+      todo: { version: 3, todosByDay: {}, backlogItems: [] },
       calculator: { version: 99, expression: "", history: [] },
     });
     expect(r.ok).toBe(false);
@@ -159,8 +155,8 @@ describe("dataExport migrations", () => {
     }
   });
 
-  it("runDeepdashJsonImportFromText reports invalid JSON", () => {
-    const r = runDeepdashJsonImportFromText("{");
+  it("runDeepdashJsonImportFromText reports invalid JSON", async () => {
+    const r = await runDeepdashJsonImportFromText("{");
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.errors[0]?.phase).toBe("bundle");
@@ -174,7 +170,7 @@ describe("dataExport migrations", () => {
       exportedAt: "",
       worldClock: { version: 1, clocks: [] },
       pomodoro: { version: 1, config: {}, logs: {} },
-      todo: { version: 1, todosByDay: {}, todoRolloverMarkers: {} },
+      todo: { version: 1, todosByDay: {} },
       calculator: { version: 1, expression: "", history: [] },
     });
 
@@ -186,7 +182,6 @@ describe("dataExport migrations", () => {
       version: 3,
       todosByDay: {},
       backlogItems: [],
-      todoRolloverMarkers: {},
     });
   });
 
@@ -209,7 +204,6 @@ describe("dataExport migrations", () => {
         },
       },
       backlogItems: [],
-      todoRolloverMarkers: { "2026-04-03": "2026-04-04" },
     });
   });
 
@@ -222,7 +216,6 @@ describe("dataExport migrations", () => {
         },
       },
       backlogItems: [],
-      todoRolloverMarkers: { "2026-04-03": "2026-04-04" },
     });
   });
 
@@ -241,17 +234,21 @@ describe("dataExport migrations", () => {
         { id: "b1", text: "Back A", done: false },
         { id: "b2", text: "Back B", done: false },
       ],
-      todoRolloverMarkers: {},
     });
   });
 });
 
 describe("applyDeepdashImportWithRollback", () => {
+  beforeEach(async () => {
+    localStorage.clear();
+    await __resetTodoDatabaseForTests();
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
-  it("rolls back to the pre-import snapshot when a module import fails", () => {
+  it("rolls back to the pre-import snapshot when a module import fails", async () => {
     const seed: DeepdashExportLatest = {
       version: CURRENT_DEEPDASH_EXPORT_VERSION,
       exportedAt: "2020-01-01T00:00:00.000Z",
@@ -268,7 +265,7 @@ describe("applyDeepdashImportWithRollback", () => {
         },
         logs: { days: {} },
       },
-      todo: { version: 3, todosByDay: {}, backlogItems: [], todoRolloverMarkers: {} },
+      todo: { version: 3, todosByDay: {}, backlogItems: [] },
       calculator: { version: 1, expression: "seed", history: [] },
     };
 
@@ -282,14 +279,14 @@ describe("applyDeepdashImportWithRollback", () => {
 
     worldClockActions.importData(seed.worldClock);
     pomodoroActions.importData(seed.pomodoro);
-    todoActions.importData(seed.todo);
+    await todoActions.importData(seed.todo);
     calculatorActions.importData(seed.calculator);
 
     jest.spyOn(pomodoroActions, "importData").mockImplementationOnce(() => {
       throw new Error("simulated pomodoro import failure");
     });
 
-    const result = applyDeepdashImportWithRollback(incoming);
+    const result = await applyDeepdashImportWithRollback(incoming);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {

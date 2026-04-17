@@ -1,17 +1,32 @@
 import { proxy, useSnapshot } from "valtio";
-import { subscribe } from "valtio/vanilla";
 
 import { localDayKey } from "@/app/_stores/pomodoroStore";
 import log from "@/lib/logger";
 import {
   migrateLegacyPersistKeysOnce,
-  TODO_AUTO_ROLLOVER_MARKER_PREFIX,
   TODO_BACKLOG_STORAGE_KEY,
   TODO_DAY_STORAGE_KEY_PREFIX,
 } from "@/lib/persistKeys";
+import {
+  applyTodoTaskWrites,
+  collectTodoTasksForExport,
+  getSortedTodoItemsForDay,
+  migrateLegacyTodoLocalStorageToIndexedDb,
+  replaceAllTodoTasksFromImport,
+  rolloverIncompleteVisibleTasksFromDayToDay,
+  TODO_IDB_BACKLOG_DAY,
+  type TodoItemWithRank,
+  type TodoTaskRecordInput,
+} from "@/lib/todoIndexedDb";
 
-const DEBOUNCE_MS = 400;
 const DAY_CHECK_INTERVAL_MS = 1000;
+const TEXT_PERSIST_DEBOUNCE_MS = 1000;
+
+/** Chains IndexedDB writes so `flushTodoPersistToStorage` can await completion. */
+let persistTail: Promise<void> = Promise.resolve();
+
+/** Latest `loadFromStorageAsync` invocation (for tests). */
+let lastTodoLoadPromise: Promise<void> = Promise.resolve();
 
 const todoStore = proxy({
   /**
@@ -27,49 +42,46 @@ const todoStore = proxy({
   backlogItems: [] as TodoItem[],
 });
 
-/** Persisted JSON for one calendar day: today list only. */
+/** JSON shape for one calendar day (no `rank`; ordering is array order). */
 export type TodoDayDocumentV3 = {
-  items: TodoItem[];
+  items: TodoItemPublic[];
 };
 
 /** @deprecated Import migration only; per-day backlog lived here before v3. */
 export type TodoDayDocumentV2 = {
-  items: TodoItem[];
-  backlogItems: TodoItem[];
+  items: TodoItemPublic[];
+  backlogItems: TodoItemPublic[];
 };
 
 /** @deprecated Import migration only. */
 export type TodoDayDocumentV1 = {
-  items: TodoItem[];
+  items: TodoItemPublic[];
 };
 
-export type TodoItem = {
-  id: string;
-  text: string;
-  done: boolean;
-};
+/** JSON / export row (matches on-disk bundle; no fractional `rank`). */
+export type TodoItemPublic = { id: string; text: string; done: boolean };
+
+/** Live list row: includes persisted `rank` from IndexedDB. */
+export type TodoItem = TodoItemWithRank;
 
 export const TODO_EXPORT_VERSION = 3 as const;
 
 export type TodoExportV3 = {
   version: typeof TODO_EXPORT_VERSION;
   todosByDay: Record<string, TodoDayDocumentV3>;
-  backlogItems: TodoItem[];
-  todoRolloverMarkers: Record<string, string>;
+  backlogItems: TodoItemPublic[];
 };
 
 /** @deprecated Use {@link TodoExportV3}. */
 export type TodoExportV2 = {
   version: 2;
   todosByDay: Record<string, TodoDayDocumentV2>;
-  todoRolloverMarkers: Record<string, string>;
 };
 
 /** @deprecated Use {@link TodoExportV3}. */
 export type TodoExportV1 = {
   version: 1;
   todosByDay: Record<string, TodoDayDocumentV1>;
-  todoRolloverMarkers: Record<string, string>;
 };
 
 export type TodoListKind = "today" | "backlog";
@@ -89,19 +101,16 @@ export function useTodoList(): {
 
 export const todoActions = {
   init: function init(): () => void {
-    loadFromStorage();
-    const unsub = subscribe(todoStore, () => {
-      if (!todoStore.hydrated) return;
-      schedulePersistDebounced();
-    });
+    lastTodoLoadPromise = loadFromStorageAsync();
+    void lastTodoLoadPromise;
 
     const flush = (): void => {
-      flushPersistSync();
+      void flushTodoPersistToStorage();
     };
 
     const onVisibility = (): void => {
       if (document.visibilityState === "hidden") flush();
-      else syncCalendarDayIfNeeded();
+      else void syncCalendarDayIfNeededAsync();
     };
 
     if (typeof window !== "undefined") {
@@ -113,20 +122,18 @@ export const todoActions = {
     const dayTimer =
       typeof window !== "undefined"
         ? window.setInterval(() => {
-            syncCalendarDayIfNeeded();
+            void syncCalendarDayIfNeededAsync();
           }, DAY_CHECK_INTERVAL_MS)
         : null;
 
     return () => {
-      unsub();
       if (typeof window !== "undefined") {
         window.removeEventListener("beforeunload", flush);
         window.removeEventListener("pagehide", flush);
         document.removeEventListener("visibilitychange", onVisibility);
       }
       if (dayTimer != null) window.clearInterval(dayTimer);
-      clearDebounceTimer();
-      flushPersistSync();
+      void flushTodoPersistToStorage();
     };
   },
 
@@ -134,6 +141,7 @@ export const todoActions = {
     const loc = findItemLocation(id);
     if (!loc) return;
     itemsForList(loc.kind)[loc.index].text = text;
+    scheduleDebouncedTextPersist(id);
   },
 
   toggleDone: function toggleDone(id: string): void {
@@ -141,11 +149,15 @@ export const todoActions = {
     if (!loc) return;
     const row = itemsForList(loc.kind)[loc.index];
     row.done = !row.done;
+    enqueueTodoPersist([id]);
   },
 
   addItem: function addItem(text: string, done = false, list: TodoListKind = "today"): string {
     const id = crypto.randomUUID();
-    itemsForList(list).push({ id, text, done });
+    const arr = itemsForList(list);
+    const rank = appendRankForList(arr);
+    arr.push({ id, text, done, rank });
+    enqueueTodoPersist([id]);
     return id;
   },
 
@@ -153,7 +165,15 @@ export const todoActions = {
     const id = crypto.randomUUID();
     const arr = itemsForList(list);
     const clamped = Math.max(0, Math.min(index, arr.length));
-    arr.splice(clamped, 0, { id, text: "", done: false });
+    const prev = clamped > 0 ? arr[clamped - 1] : undefined;
+    const next = clamped < arr.length ? arr[clamped] : undefined;
+    let rank: number;
+    if (!prev && !next) rank = 0;
+    else if (!prev) rank = next ? next.rank / 2 : 0;
+    else if (!next) rank = prev.rank + 1000;
+    else rank = (prev.rank + next.rank) / 2;
+    arr.splice(clamped, 0, { id, text: "", done: false, rank });
+    enqueueTodoPersist([id]);
     return id;
   },
 
@@ -167,9 +187,13 @@ export const todoActions = {
     const left = t.slice(0, caret);
     const right = t.slice(caret);
     const row = arr[i];
+    const leftRank = row.rank;
+    const oldNext = arr[i + 1];
+    const rRank = !oldNext ? leftRank + 1000 : (leftRank + oldNext.rank) / 2;
     arr[i] = { ...row, text: left };
     const newId = crypto.randomUUID();
-    arr.splice(i + 1, 0, { id: newId, text: right, done: false });
+    arr.splice(i + 1, 0, { id: newId, text: right, done: false, rank: rRank });
+    enqueueTodoPersist([id, newId]);
     return newId;
   },
 
@@ -181,12 +205,17 @@ export const todoActions = {
     if (i < 0 || i >= arr.length - 1) return;
     const cur = arr[i];
     const next = arr[i + 1];
+    const nextId = next.id;
     const merged = `${cur.text} ${next.text}`;
+    const mergedDone = cur.done;
+    const mergedId = cur.id;
     arr.splice(i, 2, {
       id: cur.id,
       text: merged,
-      done: cur.done,
+      done: mergedDone,
+      rank: cur.rank,
     });
+    enqueueTodoPersist([mergedId], [nextId]);
   },
 
   mergeWithPrev: function mergeWithPrev(id: string): void {
@@ -197,18 +226,24 @@ export const todoActions = {
     if (i <= 0) return;
     const prev = arr[i - 1];
     const cur = arr[i];
+    const curId = cur.id;
     const merged = `${prev.text} ${cur.text}`;
+    const mergedDone = prev.done && cur.done;
+    const mergedId = prev.id;
     arr.splice(i - 1, 2, {
       id: prev.id,
       text: merged,
-      done: prev.done && cur.done,
+      done: mergedDone,
+      rank: prev.rank,
     });
+    enqueueTodoPersist([mergedId], [curId]);
   },
 
   removeItem: function removeItem(id: string): void {
     const loc = findItemLocation(id);
     if (!loc) return;
     itemsForList(loc.kind).splice(loc.index, 1);
+    enqueueTodoPersist([], [id]);
   },
 
   /** Removes a row if it still exists and its text is empty/whitespace (e.g. after blur). */
@@ -218,6 +253,7 @@ export const todoActions = {
     const arr = itemsForList(loc.kind);
     if (arr[loc.index].text.trim() !== "") return;
     arr.splice(loc.index, 1);
+    enqueueTodoPersist([], [id]);
   },
 
   /** Swaps the item with its neighbor in the given direction (pointer-driven reorder). */
@@ -228,8 +264,15 @@ export const todoActions = {
     const from = loc.index;
     const to = from + delta;
     if (to < 0 || to >= arr.length) return;
+    const itemA = arr[from]!;
+    const itemB = arr[to]!;
+    const ar = itemA.rank;
+    const br = itemB.rank;
+    itemA.rank = br;
+    itemB.rank = ar;
     const [row] = arr.splice(from, 1);
     arr.splice(to, 0, row);
+    enqueueTodoPersist([itemA.id, itemB.id]);
   },
 
   /** Moves a task from Today to Backlog (top of backlog list). */
@@ -237,7 +280,9 @@ export const todoActions = {
     const loc = findItemLocation(id);
     if (!loc || loc.kind !== "today") return;
     const [row] = todoStore.items.splice(loc.index, 1);
-    todoStore.backlogItems.unshift(row);
+    const rank = unshiftRankForList(todoStore.backlogItems);
+    todoStore.backlogItems.unshift({ ...row, rank });
+    enqueueTodoPersist([row.id]);
   },
 
   /** Moves a task from Backlog to Today (top of today’s list). */
@@ -245,40 +290,45 @@ export const todoActions = {
     const loc = findItemLocation(id);
     if (!loc || loc.kind !== "backlog") return;
     const [row] = todoStore.backlogItems.splice(loc.index, 1);
-    todoStore.items.unshift(row);
+    const rank = unshiftRankForList(todoStore.items);
+    todoStore.items.unshift({ ...row, rank });
+    enqueueTodoPersist([row.id]);
   },
 
-  exportData: function exportData(): TodoExportV3 {
-    return collectTodoExportFromLocalStorage();
+  exportData: async function exportData(): Promise<TodoExportV3> {
+    const buckets = await collectTodoTasksForExport();
+    return {
+      version: TODO_EXPORT_VERSION,
+      todosByDay: buckets.todosByDay,
+      backlogItems: buckets.backlogItems,
+    };
   },
 
   /**
-   * Replaces all todo day buckets, global backlog, and rollover markers. Does not run auto-rollover side effects.
-   * Accepts `{ version, todosByDay, backlogItems, todoRolloverMarkers }` or legacy shapes.
+   * Replaces all todo day buckets and global backlog. Does not run auto-rollover side effects.
+   * Accepts `{ version, todosByDay, backlogItems }` or legacy shapes (rollover markers in old files are ignored).
    */
-  importData: function importData(data: unknown): void {
+  importData: async function importData(data: unknown): Promise<void> {
     const slice = migrateTodoSliceToLatest(data);
     if (typeof window === "undefined") return;
-    clearDebounceTimer();
-    clearTodoRelatedStorageKeys();
+    await flushTodoPersistToStorage();
+    await clearTodoRelatedStorageKeysAsync();
+
+    const todosByDay: Record<string, TodoDayDocumentV3> = {};
     for (const [day, doc] of Object.entries(slice.todosByDay)) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
-      storageSetItemStrict(dayStorageKey(day), JSON.stringify(doc));
+      todosByDay[day] = {
+        items: doc.items.map((t) => ({ id: t.id, text: t.text, done: t.done })),
+      };
     }
     const backlogRows = omitEmptyBacklogItems(
       slice.backlogItems.map((t) => ({ id: t.id, text: t.text, done: t.done })),
     );
-    storageSetItemStrict(TODO_BACKLOG_STORAGE_KEY, JSON.stringify({ backlogItems: backlogRows }));
-    for (const [yKey, todayKey] of Object.entries(slice.todoRolloverMarkers)) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(yKey)) continue;
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(todayKey)) continue;
-      storageSetItemStrict(autoRolloverMarkerKey(yKey), todayKey);
-    }
+    await replaceAllTodoTasksFromImport({ todosByDay, backlogItems: backlogRows });
+
     const today = localDayKey();
-    todoStore.backlogItems = backlogRows.map((t) => ({ id: t.id, text: t.text, done: t.done }));
-    applyLoadedDay(today, readValidatedDayDocument(today));
-    lastWrittenDayJson = JSON.stringify(pickPersistedDayDocument());
-    lastWrittenBacklogJson = JSON.stringify(pickPersistedBacklogBlob());
+    todoStore.backlogItems = await getSortedTodoItemsForDay(TODO_IDB_BACKLOG_DAY);
+    applyLoadedDay(today, { items: await getSortedTodoItemsForDay(today) });
   },
 };
 
@@ -304,86 +354,105 @@ function previousLocalDayKey(d = new Date()): string {
 
 // --- persistence ---
 
+let textDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let textDebounceTaskId: string | null = null;
+
+/**
+ * Flush pending debounced text, then write tasks to IndexedDB from current store state.
+ * @param writeIds - Rows to upsert (omit or pass `[]` for delete-only).
+ * @param deleteIds - Row ids to remove from IndexedDB (already dropped or merged out in the UI).
+ */
+function enqueueTodoPersist(writeIds: string[], deleteIds: readonly string[] = []): void {
+  persistTail = persistTail
+    .then(() => flushPendingTextDebounced())
+    .then(async () => {
+      if (deleteIds.length === 0 && writeIds.length === 1) {
+        await persistTaskById(writeIds[0]!);
+        return;
+      }
+      await applyTodoTaskWrites({
+        deleteIds: [...deleteIds],
+        putRecords: recordsForTaskIds(writeIds),
+      });
+    })
+    .catch((e: unknown) => {
+      log.warn("todo: IndexedDB persist failed", e);
+    });
+}
+
+/** Debounced text sync; switching tasks flushes the previous id onto {@link persistTail} immediately. */
+function scheduleDebouncedTextPersist(id: string): void {
+  if (textDebounceTaskId !== null && textDebounceTaskId !== id) {
+    if (textDebounceTimer !== null) {
+      clearTimeout(textDebounceTimer);
+      textDebounceTimer = null;
+    }
+    const prevId = textDebounceTaskId;
+    textDebounceTaskId = null;
+    persistTail = persistTail.then(() => persistTaskById(prevId)).catch((e: unknown) => {
+      log.warn("todo: IndexedDB persist failed", e);
+    });
+  }
+  textDebounceTaskId = id;
+  if (textDebounceTimer !== null) {
+    clearTimeout(textDebounceTimer);
+  }
+  textDebounceTimer = setTimeout(() => {
+    textDebounceTimer = null;
+    const tid = textDebounceTaskId;
+    textDebounceTaskId = null;
+    if (tid) {
+      persistTail = persistTail.then(() => persistTaskById(tid)).catch((e: unknown) => {
+        log.warn("todo: IndexedDB persist failed", e);
+      });
+    }
+  }, TEXT_PERSIST_DEBOUNCE_MS);
+}
+
+async function flushPendingTextDebounced(): Promise<void> {
+  if (textDebounceTimer !== null) {
+    clearTimeout(textDebounceTimer);
+    textDebounceTimer = null;
+  }
+  const id = textDebounceTaskId;
+  textDebounceTaskId = null;
+  if (id) {
+    await persistTaskById(id);
+  }
+}
+
+async function persistTaskById(id: string): Promise<void> {
+  const loc = findItemLocation(id);
+  if (!loc) return;
+  const row = itemsForList(loc.kind)[loc.index];
+  const day = loc.kind === "today" ? todoStore.dayKey : TODO_IDB_BACKLOG_DAY;
+  await applyTodoTaskWrites({
+    putRecords: [{ id, day, text: row.text, done: row.done, rank: row.rank }],
+  });
+}
+
+function recordsForTaskIds(ids: readonly string[]): TodoTaskRecordInput[] {
+  const out: TodoTaskRecordInput[] = [];
+  for (const id of ids) {
+    const loc = findItemLocation(id);
+    if (!loc) continue;
+    const row = itemsForList(loc.kind)[loc.index];
+    const day = loc.kind === "today" ? todoStore.dayKey : TODO_IDB_BACKLOG_DAY;
+    out.push({ id, day, text: row.text, done: row.done, rank: row.rank });
+  }
+  return out;
+}
+
 function dayStorageKey(dayKey: string): string {
   return `${TODO_DAY_STORAGE_KEY_PREFIX}${dayKey}`;
 }
 
-function autoRolloverMarkerKey(yesterdayKey: string): string {
-  return `${TODO_AUTO_ROLLOVER_MARKER_PREFIX}${yesterdayKey}`;
-}
-
-let lastWrittenDayJson = "";
-let lastWrittenBacklogJson = "";
-/** Browser `setTimeout` id (`number`); avoid `NodeJS.Timeout` from Node typings. */
-let debounceTimer: number | null = null;
-
-function clearDebounceTimer(): void {
-  if (debounceTimer != null) {
-    clearTimeout(debounceTimer);
-    debounceTimer = null;
-  }
-}
-
-function schedulePersistDebounced(): void {
-  if (typeof window === "undefined") return;
-  clearDebounceTimer();
-  debounceTimer = window.setTimeout(() => {
-    debounceTimer = null;
-    persistNow();
-  }, DEBOUNCE_MS);
-}
-
-function flushPersistSync(): void {
-  clearDebounceTimer();
-  persistNow();
-}
-
-function mapRow(t: TodoItem): { id: string; text: string; done: boolean } {
-  return { id: t.id, text: t.text, done: t.done };
-}
-
-function pickPersistedDayDocument(): TodoDayDocumentV3 {
-  return {
-    items: todoStore.items.map(mapRow),
-  };
-}
-
-function pickPersistedBacklogBlob(): { backlogItems: ReturnType<typeof mapRow>[] } {
-  return {
-    backlogItems: todoStore.backlogItems.map(mapRow),
-  };
-}
-
-function persistNow(): void {
-  if (typeof window === "undefined") return;
-  if (!todoStore.hydrated) return;
-  const dayS = JSON.stringify(pickPersistedDayDocument());
-  if (dayS !== lastWrittenDayJson) {
-    lastWrittenDayJson = dayS;
-    storageSetItem(dayStorageKey(todoStore.dayKey), dayS);
-  }
-  const backlogS = JSON.stringify(pickPersistedBacklogBlob());
-  if (backlogS !== lastWrittenBacklogJson) {
-    lastWrittenBacklogJson = backlogS;
-    storageSetItem(TODO_BACKLOG_STORAGE_KEY, backlogS);
-  }
-}
-
-function applyLoadedDay(dayKey: string, doc: TodoDayDocumentV3): void {
+function applyLoadedDay(dayKey: string, doc: { items: TodoItem[] }): void {
   todoStore.dayKey = dayKey;
   todoStore.items = doc.items;
 }
 
-function syncPersistSnapshots(): void {
-  const dayDoc = pickPersistedDayDocument();
-  lastWrittenDayJson = JSON.stringify(dayDoc);
-  storageSetItem(dayStorageKey(todoStore.dayKey), lastWrittenDayJson);
-  const backlogBlob = pickPersistedBacklogBlob();
-  lastWrittenBacklogJson = JSON.stringify(backlogBlob);
-  storageSetItem(TODO_BACKLOG_STORAGE_KEY, lastWrittenBacklogJson);
-}
-
-function isTodoItem(x: unknown): x is TodoItem {
+function isTodoItemJson(x: unknown): x is TodoItemPublic {
   if (!x || typeof x !== "object") return false;
   const o = x as Record<string, unknown>;
   return (
@@ -394,7 +463,7 @@ function isTodoItem(x: unknown): x is TodoItem {
 }
 
 /** Drops persisted rows with no visible text (empty or whitespace-only). */
-function todoRowHasVisibleText(t: TodoItem): boolean {
+function todoRowHasVisibleText(t: TodoItemPublic): boolean {
   return t.text.trim() !== "";
 }
 
@@ -405,14 +474,24 @@ function omitEmptyTodoDayItems(doc: TodoDayDocumentV3): TodoDayDocumentV3 {
 }
 
 /** Same normalization as {@link omitEmptyTodoDayItems} for global backlog lists. */
-function omitEmptyBacklogItems(items: TodoItem[]): TodoItem[] {
+function omitEmptyBacklogItems(items: TodoItemPublic[]): TodoItemPublic[] {
   return items.filter(todoRowHasVisibleText);
+}
+
+function appendRankForList(items: readonly TodoItem[]): number {
+  const last = items[items.length - 1];
+  return last ? last.rank + 1000 : 0;
+}
+
+function unshiftRankForList(items: readonly TodoItem[]): number {
+  const first = items[0];
+  return items.length ? first.rank - 1000 : 0;
 }
 
 function parseTodoDayDocumentV3(raw: unknown): TodoDayDocumentV3 {
   if (!raw || typeof raw !== "object") return { items: [] };
   const o = raw as Record<string, unknown>;
-  const items = Array.isArray(o.items) ? o.items.filter(isTodoItem) : [];
+  const items = Array.isArray(o.items) ? o.items.filter(isTodoItemJson) : [];
   return omitEmptyTodoDayItems({ items });
 }
 
@@ -420,25 +499,12 @@ function parseTodoDayDocumentV3(raw: unknown): TodoDayDocumentV3 {
 function parseTodoDayDocumentV2(raw: unknown): TodoDayDocumentV2 {
   if (!raw || typeof raw !== "object") return { items: [], backlogItems: [] };
   const o = raw as Record<string, unknown>;
-  const items = Array.isArray(o.items) ? o.items.filter(isTodoItem) : [];
-  const backlogItems = Array.isArray(o.backlogItems) ? o.backlogItems.filter(isTodoItem) : [];
+  const items = Array.isArray(o.items) ? o.items.filter(isTodoItemJson) : [];
+  const backlogItems = Array.isArray(o.backlogItems) ? o.backlogItems.filter(isTodoItemJson) : [];
   return {
     items: items.filter(todoRowHasVisibleText),
     backlogItems: omitEmptyBacklogItems(backlogItems),
   };
-}
-
-function readValidatedDayDocument(dayKey: string): TodoDayDocumentV3 {
-  if (typeof window === "undefined") return { items: [] };
-  try {
-    const raw = localStorage.getItem(dayStorageKey(dayKey));
-    if (!raw) return { items: [] };
-    const parsed = JSON.parse(raw) as unknown;
-    return parseTodoDayDocumentV3(parsed);
-  } catch (e: unknown) {
-    log.warn("todo: parse failed for day", dayKey, e);
-    return { items: [] };
-  }
 }
 
 function storageSetItem(key: string, value: string): void {
@@ -465,7 +531,7 @@ function storageSetItemStrict(key: string, value: string): void {
 function migrateLocalStoragePerDayBacklogToGlobal(): void {
   if (typeof window === "undefined") return;
   const seen = new Set<string>();
-  const merged: TodoItem[] = [];
+  const merged: TodoItemPublic[] = [];
 
   for (const t of readValidatedGlobalBacklogItems()) {
     merged.push({ id: t.id, text: t.text, done: t.done });
@@ -491,7 +557,7 @@ function migrateLocalStoragePerDayBacklogToGlobal(): void {
     if (!parsed || typeof parsed !== "object") continue;
     const o = parsed as Record<string, unknown>;
     const backlogRaw = o.backlogItems;
-    const backlogArr = Array.isArray(backlogRaw) ? backlogRaw.filter(isTodoItem) : [];
+    const backlogArr = Array.isArray(backlogRaw) ? backlogRaw.filter(isTodoItemJson) : [];
     for (const t of backlogArr) {
       if (!todoRowHasVisibleText(t)) continue;
       if (seen.has(t.id)) continue;
@@ -514,18 +580,18 @@ function migrateLocalStoragePerDayBacklogToGlobal(): void {
   );
 }
 
-function readValidatedGlobalBacklogItems(): TodoItem[] {
+function readValidatedGlobalBacklogItems(): TodoItemPublic[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(TODO_BACKLOG_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (Array.isArray(parsed)) {
-      return omitEmptyBacklogItems(parsed.filter(isTodoItem));
+      return omitEmptyBacklogItems(parsed.filter(isTodoItemJson));
     }
     if (parsed && typeof parsed === "object" && "backlogItems" in parsed) {
       const a = (parsed as { backlogItems: unknown }).backlogItems;
-      return Array.isArray(a) ? omitEmptyBacklogItems(a.filter(isTodoItem)) : [];
+      return Array.isArray(a) ? omitEmptyBacklogItems(a.filter(isTodoItemJson)) : [];
     }
   } catch (e: unknown) {
     log.warn("todo: parse global backlog failed", e);
@@ -533,90 +599,51 @@ function readValidatedGlobalBacklogItems(): TodoItem[] {
   return [];
 }
 
-/** Rewrite one day bucket so non-empty incomplete rows are dropped (completed + empty rows stay). */
-function stripPendingFromDayBucket(dayKey: string): void {
-  const doc = readValidatedDayDocument(dayKey);
-  const items = doc.items;
-  const kept = items.filter((t) => t.done || t.text.trim() === "");
-  if (kept.length === items.length) return;
-  const yDoc: TodoDayDocumentV3 = {
-    items: kept.map((t) => ({ id: t.id, text: t.text, done: t.done })),
-  };
-  storageSetItem(dayStorageKey(dayKey), JSON.stringify(yDoc));
-}
-
 /**
- * Append yesterday’s non-empty incomplete today-list tasks to today and remove them from yesterday’s bucket.
- * Idempotent per (yesterday → today) via a small marker key so refresh does not duplicate tasks.
+ * Move every non-empty incomplete task from the previous calendar day’s list into today by updating
+ * each row’s `day` and `rank` in IndexedDB — same task ids, no duplicate rows.
  */
-function moveYesterdayPendingIntoToday(): void {
+async function moveAllPendingIntoTodayAsync(): Promise<void> {
   if (typeof window === "undefined") return;
   const today = todoStore.dayKey;
   const yKey = previousLocalDayKey();
 
-  let markerMatches = false;
-  try {
-    markerMatches = localStorage.getItem(autoRolloverMarkerKey(yKey)) === today;
-  } catch (e: unknown) {
-    log.warn("todo: read auto-rollover marker failed", e);
-  }
-
-  if (markerMatches) {
-    stripPendingFromDayBucket(yKey);
-    return;
-  }
-
-  const yesterdayDoc = readValidatedDayDocument(yKey);
-  const pending = yesterdayDoc.items.filter((t) => !t.done && t.text.trim() !== "");
-  if (pending.length === 0) return;
-
-  for (const it of pending) {
-    todoStore.items.push({
-      id: crypto.randomUUID(),
-      text: it.text,
-      done: false,
-    });
-  }
-  syncPersistSnapshots();
-
-  stripPendingFromDayBucket(yKey);
-
-  storageSetItem(autoRolloverMarkerKey(yKey), today);
+  await rolloverIncompleteVisibleTasksFromDayToDay(yKey, today);
+  applyLoadedDay(today, { items: await getSortedTodoItemsForDay(today) });
 }
 
-function loadFromStorage(): void {
+async function loadFromStorageAsync(): Promise<void> {
   if (typeof window === "undefined") return;
   migrateLegacyPersistKeysOnce();
   migrateLocalStoragePerDayBacklogToGlobal();
-  const today = localDayKey();
-  const emptyDay: TodoDayDocumentV3 = { items: [] };
   try {
-    todoStore.backlogItems = readValidatedGlobalBacklogItems().map((t) => ({
-      id: t.id,
-      text: t.text,
-      done: t.done,
-    }));
-    applyLoadedDay(today, readValidatedDayDocument(today));
-    moveYesterdayPendingIntoToday();
-    syncPersistSnapshots();
+    await migrateLegacyTodoLocalStorageToIndexedDb();
+  } catch (e: unknown) {
+    log.error("todo: IndexedDB open/migrate failed", e);
+  }
+
+  const today = localDayKey();
+  const emptyDay: { items: TodoItem[] } = { items: [] };
+  try {
+    todoStore.backlogItems = await getSortedTodoItemsForDay(TODO_IDB_BACKLOG_DAY);
+    applyLoadedDay(today, { items: await getSortedTodoItemsForDay(today) });
+    await moveAllPendingIntoTodayAsync();
   } catch (e: unknown) {
     log.error("todo: failed to load today’s list", e);
     todoStore.backlogItems = [];
     applyLoadedDay(today, emptyDay);
-    moveYesterdayPendingIntoToday();
-    syncPersistSnapshots();
+    await moveAllPendingIntoTodayAsync();
   }
   todoStore.hydrated = true;
 }
 
-function syncCalendarDayIfNeeded(): void {
+async function syncCalendarDayIfNeededAsync(): Promise<void> {
   if (!todoStore.hydrated) return;
   const today = localDayKey();
   if (todoStore.dayKey === today) return;
-  flushPersistSync();
-  applyLoadedDay(today, readValidatedDayDocument(today));
-  moveYesterdayPendingIntoToday();
-  syncPersistSnapshots();
+  await flushTodoPersistToStorage();
+  applyLoadedDay(today, { items: await getSortedTodoItemsForDay(today) });
+  await moveAllPendingIntoTodayAsync();
 }
 
 // --- bundle export/import (uses persistence helpers above) ---
@@ -633,16 +660,6 @@ function listLocalStorageKeys(): string[] {
     if (k) keys.push(k);
   }
   return keys;
-}
-
-function readJsonKey(key: string): unknown {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return null;
-  }
 }
 
 function parseTodosByDayRecordV2(raw: unknown): Record<string, TodoDayDocumentV2> {
@@ -664,9 +681,9 @@ function stripV2DaysToV3(byDay: Record<string, TodoDayDocumentV2>): Record<strin
 }
 
 /** Per-day backlog rows in calendar-day order; skips duplicate ids (later wins ignored). */
-function mergePerDayBacklogsFromV2(byDay: Record<string, TodoDayDocumentV2>): TodoItem[] {
+function mergePerDayBacklogsFromV2(byDay: Record<string, TodoDayDocumentV2>): TodoItemPublic[] {
   const seen = new Set<string>();
-  const out: TodoItem[] = [];
+  const out: TodoItemPublic[] = [];
   const days = Object.keys(byDay)
     .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
     .sort();
@@ -681,15 +698,15 @@ function mergePerDayBacklogsFromV2(byDay: Record<string, TodoDayDocumentV2>): To
   return out;
 }
 
-function parseTopLevelBacklog(raw: unknown): TodoItem[] {
+function parseTopLevelBacklog(raw: unknown): TodoItemPublic[] {
   if (!Array.isArray(raw)) return [];
-  return omitEmptyBacklogItems(raw.filter(isTodoItem));
+  return omitEmptyBacklogItems(raw.filter(isTodoItemJson));
 }
 
 /** Top-level backlog first, then per-day rows, deduping by id. */
-function mergeTopAndPerDayBacklogs(top: TodoItem[], fromDays: TodoItem[]): TodoItem[] {
+function mergeTopAndPerDayBacklogs(top: TodoItemPublic[], fromDays: TodoItemPublic[]): TodoItemPublic[] {
   const seen = new Set<string>();
-  const out: TodoItem[] = [];
+  const out: TodoItemPublic[] = [];
   for (const t of top) {
     if (!todoRowHasVisibleText(t)) continue;
     if (seen.has(t.id)) continue;
@@ -705,17 +722,6 @@ function mergeTopAndPerDayBacklogs(top: TodoItem[], fromDays: TodoItem[]): TodoI
   return out;
 }
 
-function parseRolloverMarkersRecord(raw: unknown): Record<string, string> {
-  if (!isRecord(raw)) return {};
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(raw)) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) continue;
-    if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) continue;
-    out[k] = v;
-  }
-  return out;
-}
-
 /** Normalize any supported todo import slice to {@link TodoExportV3}. */
 export function migrateTodoSliceToLatest(data: unknown): TodoExportV3 {
   log.debug("todo migration: start");
@@ -727,10 +733,6 @@ export function migrateTodoSliceToLatest(data: unknown): TodoExportV3 {
   log.debug("todo migration: shape", {
     version: v,
     todosByDayKeys: data.todosByDay != null && isRecord(data.todosByDay) ? Object.keys(data.todosByDay).length : 0,
-    markerKeys:
-      data.todoRolloverMarkers != null && isRecord(data.todoRolloverMarkers)
-        ? Object.keys(data.todoRolloverMarkers).length
-        : 0,
   });
   if (v !== undefined && v !== 1 && v !== 2 && v !== TODO_EXPORT_VERSION) {
     log.error("todo migration: unsupported version", { version: v });
@@ -742,7 +744,6 @@ export function migrateTodoSliceToLatest(data: unknown): TodoExportV3 {
   const todosByDayV2 = parseTodosByDayRecordV2(data.todosByDay);
   const fromDaysMerged = mergePerDayBacklogsFromV2(todosByDayV2);
   const todosByDay = stripV2DaysToV3(todosByDayV2);
-  const todoRolloverMarkers = parseRolloverMarkersRecord(data.todoRolloverMarkers);
 
   const topMerged = Array.isArray(data.backlogItems) ? parseTopLevelBacklog(data.backlogItems) : [];
   const backlogItems = mergeTopAndPerDayBacklogs(topMerged, fromDaysMerged);
@@ -756,61 +757,18 @@ export function migrateTodoSliceToLatest(data: unknown): TodoExportV3 {
   log.debug("todo migration: ok", {
     dayCount: Object.keys(todosByDay).length,
     itemCount,
-    markerCount: Object.keys(todoRolloverMarkers).length,
   });
   return {
     version: TODO_EXPORT_VERSION,
     todosByDay,
     backlogItems,
-    todoRolloverMarkers,
   };
 }
 
-function collectTodoExportFromLocalStorage(): TodoExportV3 {
-  if (typeof window === "undefined") {
-    return {
-      version: TODO_EXPORT_VERSION,
-      todosByDay: {},
-      backlogItems: [],
-      todoRolloverMarkers: {},
-    };
-  }
-  const todosByDay: Record<string, TodoDayDocumentV3> = {};
-  const todoRolloverMarkers: Record<string, string> = {};
-  for (const key of listLocalStorageKeys()) {
-    if (key.startsWith(TODO_DAY_STORAGE_KEY_PREFIX)) {
-      const day = key.slice(TODO_DAY_STORAGE_KEY_PREFIX.length);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
-      const parsed = readJsonKey(key);
-      todosByDay[day] = parseTodoDayDocumentV3(parsed);
-    } else if (key.startsWith(TODO_AUTO_ROLLOVER_MARKER_PREFIX)) {
-      const yKey = key.slice(TODO_AUTO_ROLLOVER_MARKER_PREFIX.length);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(yKey)) continue;
-      try {
-        const val = localStorage.getItem(key);
-        if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) todoRolloverMarkers[yKey] = val;
-      } catch (e: unknown) {
-        log.warn("todo: read rollover marker for export failed", yKey, e);
-      }
-    }
-  }
-  const backlogItems = readValidatedGlobalBacklogItems();
-  return {
-    version: TODO_EXPORT_VERSION,
-    todosByDay,
-    backlogItems,
-    todoRolloverMarkers,
-  };
-}
-
-function clearTodoRelatedStorageKeys(): void {
+async function clearTodoRelatedStorageKeysAsync(): Promise<void> {
   const toRemove: string[] = [];
   for (const key of listLocalStorageKeys()) {
-    if (
-      key.startsWith(TODO_DAY_STORAGE_KEY_PREFIX) ||
-      key.startsWith(TODO_AUTO_ROLLOVER_MARKER_PREFIX) ||
-      key === TODO_BACKLOG_STORAGE_KEY
-    ) {
+    if (key.startsWith(TODO_DAY_STORAGE_KEY_PREFIX) || key === TODO_BACKLOG_STORAGE_KEY) {
       toRemove.push(key);
     }
   }
@@ -823,7 +781,13 @@ function clearTodoRelatedStorageKeys(): void {
   }
 }
 
-/** Synchronous write of persisted todo state (clears debounce). Use before export/download. */
-export function flushTodoPersistToStorage(): void {
-  flushPersistSync();
+/** Await pending per-task IndexedDB writes. Use before export/download. */
+export async function flushTodoPersistToStorage(): Promise<void> {
+  await flushPendingTextDebounced();
+  await persistTail;
+}
+
+/** @internal Wait for the initial IndexedDB load started by {@link todoActions.init}. */
+export async function __awaitTodoStoreHydrationForTests(): Promise<void> {
+  await lastTodoLoadPromise;
 }

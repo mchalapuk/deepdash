@@ -11,8 +11,8 @@ export const TODO_DAY_STORAGE_KEY_PREFIX = "deepdash.todo.day.";
 /** Single global backlog (not tied to a calendar day). JSON: `{ backlogItems: TodoItem[] }`. */
 export const TODO_BACKLOG_STORAGE_KEY = "deepdash.todo.backlog.v1";
 
-/** Idempotency markers for auto-rollover: `{prefix}{yesterdayKey}` → today’s day key. */
-export const TODO_AUTO_ROLLOVER_MARKER_PREFIX = "deepdash.todo.autoRolloverFrom.";
+/** Set after legacy todo task JSON (`TODO_DAY_*` / `TODO_BACKLOG_STORAGE_KEY`) was migrated into IndexedDB. */
+export const TODO_IDB_LEGACY_MIGRATED_KEY = "deepdash.todo.tasks.idbLegacyMigrated.v1";
 
 /** Set after first-run demo data is skipped (existing user) or applied (blank profile). */
 export const FIRST_RUN_SEED_HANDLED_KEY = "deepdash.firstRunSeedHandled.v1";
@@ -44,6 +44,7 @@ export function migrateLegacyPersistKeysOnce(): void {
 
     const legacyDayPrefix = "worktools.todo.day.";
     const legacyRolloverPrefix = "worktools.todo.autoRolloverFrom.";
+    const obsoleteRolloverPrefix = "deepdash.todo.autoRolloverFrom.";
     const keys: string[] = [];
     for (let i = 0; i < ls.length; i++) {
       const k = ls.key(i);
@@ -53,9 +54,14 @@ export function migrateLegacyPersistKeysOnce(): void {
       if (k.startsWith(legacyDayPrefix)) {
         const suffix = k.slice(legacyDayPrefix.length);
         migratePair(k, `${TODO_DAY_STORAGE_KEY_PREFIX}${suffix}`);
-      } else if (k.startsWith(legacyRolloverPrefix)) {
-        const suffix = k.slice(legacyRolloverPrefix.length);
-        migratePair(k, `${TODO_AUTO_ROLLOVER_MARKER_PREFIX}${suffix}`);
+      } else if (k.startsWith(legacyRolloverPrefix) || k.startsWith(obsoleteRolloverPrefix)) {
+        // Not task data: old idempotency markers for a removed feature. They are never migrated to
+        // IndexedDB (todo rows live under `TODO_DAY_*` / `TODO_BACKLOG_STORAGE_KEY`, copied above).
+        try {
+          ls.removeItem(k);
+        } catch {
+          /* best effort */
+        }
       }
     }
   } catch {
