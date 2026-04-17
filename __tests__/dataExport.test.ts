@@ -16,6 +16,7 @@ import {
   type DeepdashExportLatest,
 } from "@/lib/dataExport";
 import { migrateTodoSliceToLatest } from "@/app/_stores/todoStore";
+import { __resetPomodoroDatabaseForTests } from "@/lib/pomodoroIndexedDb";
 import { __resetTodoDatabaseForTests } from "@/lib/todoIndexedDb";
 
 /** Asserts migration succeeds; mirrors the former `migrateImportToLatest` helper for tests. */
@@ -242,6 +243,7 @@ describe("applyDeepdashImportWithRollback", () => {
   beforeEach(async () => {
     localStorage.clear();
     await __resetTodoDatabaseForTests();
+    await __resetPomodoroDatabaseForTests();
   });
 
   afterEach(() => {
@@ -278,7 +280,7 @@ describe("applyDeepdashImportWithRollback", () => {
     };
 
     worldClockActions.importData(seed.worldClock);
-    pomodoroActions.importData(seed.pomodoro);
+    await pomodoroActions.importData(seed.pomodoro);
     await todoActions.importData(seed.todo);
     calculatorActions.importData(seed.calculator);
 

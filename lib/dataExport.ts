@@ -43,7 +43,7 @@ export async function collectDeepdashExport(): Promise<DeepdashExportLatest> {
     version: CURRENT_DEEPDASH_EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     worldClock: worldClockActions.exportData(),
-    pomodoro: pomodoroActions.exportData(),
+    pomodoro: await pomodoroActions.exportData(),
     todo: await todoActions.exportData(),
     calculator: calculatorActions.exportData(),
   };
@@ -217,7 +217,7 @@ async function applyDeepdashImport(data: DeepdashExportLatest): Promise<void> {
     throw new Error("Import is only available in the browser.");
   }
   worldClockActions.importData(data.worldClock);
-  pomodoroActions.importData(data.pomodoro);
+  await pomodoroActions.importData(data.pomodoro);
   await todoActions.importData(data.todo);
   calculatorActions.importData(data.calculator);
 }

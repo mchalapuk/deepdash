@@ -5,14 +5,29 @@ import type { PomodoroPhase } from "@/lib/layout";
 import log from "@/lib/logger";
 import {
   migrateLegacyPersistKeysOnce,
+  POMODORO_ACTIVE_SESSION_KEY,
   POMODORO_CONFIG_KEY,
-  POMODORO_LOGS_KEY,
 } from "@/lib/persistKeys";
+import {
+  applyPomodoroLogWrites,
+  collectPomodoroLogsForExport,
+  getSortedPomodoroLogRecordsForDay,
+  migrateLegacyPomodoroLocalStorageToIndexedDb,
+  replaceAllPomodoroLogsFromImport,
+  type PomodoroLogRecord,
+  type PomodoroLogsExport,
+} from "@/lib/pomodoroIndexedDb";
 
 export type { PomodoroPhase };
 
 const CONFIG_KEY = POMODORO_CONFIG_KEY;
-const LOGS_KEY = POMODORO_LOGS_KEY;
+const ACTIVE_SESSION_KEY = POMODORO_ACTIVE_SESSION_KEY;
+
+/** Chains IndexedDB writes so `flushPomodoroPersistToStorage` can await completion. */
+let persistTail: Promise<void> = Promise.resolve();
+
+/** Latest `loadFromStorageAsync` invocation (for tests). */
+let lastPomodoroLoadPromise: Promise<void> = Promise.resolve();
 
 const DEFAULT_WORK_MS = 25 * 60 * 1000;
 const DEFAULT_SHORT_MS = 5 * 60 * 1000;
@@ -30,6 +45,15 @@ const POMODORO_TIMER_INTERVAL_MS = 100;
 /** Flip digit animation lags real time; display leads by this much so flips line up with wall seconds. */
 const FLIP_DISPLAY_LEAD_MS = 300;
 
+/** Same cadence as {@link todoStore} day rollover checks. */
+const DAY_CHECK_INTERVAL_MS = 1000;
+
+/** JSON export slice / migration version. */
+export const POMODORO_EXPORT_VERSION = 1 as const;
+
+/** localStorage active-session file format version. */
+export const POMODORO_ACTIVE_SESSION_FILE_VERSION = 1 as const;
+
 const pomodoroStore = proxy({
   phase: "work" as PomodoroPhase,
   config: {
@@ -42,8 +66,15 @@ const pomodoroStore = proxy({
    * overwrite the user’s saved config/logs before loadFromStorage() finishes.
    */
   hydrated: false,
-  /** Per local-day completed runs (durations + pauses). Used for totals and long-break cadence. */
-  dayLogs: {} as Record<string, PomodoroDayLogV1>,
+  /**
+   * Local calendar-day key for {@link dayLog} (same idea as `todoStore.dayKey`). Other days stay
+   * in IndexedDB only until/unless they become “today”.
+   */
+  dayKey: "" as string,
+  /**
+   * Completed phase blocks for {@link dayKey} only. Each entry has an IndexedDB row id.
+   */
+  dayLog: { entries: [] } as PomodoroDayLogStored,
   /**
    * In-memory phase run after Start: logs pauses and supplies countdown via intendedDurationMs +
    * phaseStartedAtMs + pauses. Idle (no run) uses config durations for display.
@@ -72,9 +103,16 @@ export type PomodoroLoggedPhase = {
   pauses: PomodoroPauseSpan[];
 };
 
-/** Persisted: ordered history for a single local day */
+/** JSON / export: ordered history for a single local day (no per-entry ids). */
 export type PomodoroDayLogV1 = {
   entries: PomodoroLoggedPhase[];
+};
+
+/** In-memory day bucket: each completed block is addressable by {@link id} in IndexedDB. */
+export type PomodoroLogEntryStored = PomodoroLoggedPhase & { id: string };
+
+export type PomodoroDayLogStored = {
+  entries: PomodoroLogEntryStored[];
 };
 
 /** Persisted: map of YYYY-MM-DD → day log */
@@ -82,7 +120,6 @@ export type PomodoroLogsV1 = {
   days: Record<string, PomodoroDayLogV1>;
 };
 
-export const POMODORO_EXPORT_VERSION = 1 as const;
 export type PomodoroExportV1 = {
   version: typeof POMODORO_EXPORT_VERSION;
   config: PomodoroConfigV1;
@@ -99,6 +136,13 @@ export type ActivePhaseRun = {
   openPauseStartMs: number | null;
   /** After the wall-clock deadline passes, `init`’s `onPhaseDeadlineCrossed` runs once per run. */
   deadlineCrossedNotified: boolean;
+};
+
+/** localStorage snapshot for the active-session key (in-flight session only). */
+export type PomodoroActiveSessionFileV1 = {
+  version: typeof POMODORO_ACTIVE_SESSION_FILE_VERSION;
+  phase: PomodoroPhase;
+  activePhaseRun: ActivePhaseRun;
 };
 
 export type DurationSlice = {
@@ -186,13 +230,10 @@ function flipClockEndsAtMsAt(snap: PomodoroSnap, nowMs: number): number {
 }
 
 export function useTodayWorkMsDisplay(): number {
-  const day = localDayKey();
-  const log = useSnapshot(pomodoroStore).dayLogs[day];
+  const snap = useSnapshot(pomodoroStore);
   let sum = 0;
-  if (log) {
-    for (const e of log.entries) {
-      sum += workMsFromEntry(e);
-    }
+  for (const e of snap.dayLog.entries) {
+    sum += workMsFromEntry(e);
   }
   const r = pomodoroStore.activePhaseRun;
   if (r?.phase === "work") {
@@ -202,17 +243,18 @@ export function useTodayWorkMsDisplay(): number {
 }
 
 /**
- * Today’s calendar-day log entries (all phases) plus the active phase run, for session summaries.
+ * Loaded work-log bucket (see {@link pomodoroStore.dayKey}) plus the active phase run, for session
+ * summaries. If the calendar day rolled over and sync has not run yet, entries may still be the
+ * previous day’s — avoids an empty flash until {@link syncPomodoroCalendarDayIfNeededAsync} runs.
  * Single snapshot subscription — prefer this over reading the store proxy from components.
  */
 export function useTodayPomodoroDaySlice(): {
-  todayEntries: Snapshot<PomodoroDayLogV1>["entries"];
+  todayEntries: Snapshot<PomodoroDayLogStored>["entries"];
   activePhaseRun: Snapshot<ActivePhaseRun> | null;
 } {
-  const day = localDayKey();
   const snap = useSnapshot(pomodoroStore);
   return {
-    todayEntries: snap.dayLogs[day]?.entries ?? [],
+    todayEntries: snap.dayLog.entries,
     activePhaseRun: snap.activePhaseRun,
   };
 }
@@ -228,13 +270,43 @@ export type PomodoroInitOptions = {
 
 export const pomodoroActions = {
   init: function init(options?: PomodoroInitOptions): () => void {
-    loadFromStorage();
+    lastPomodoroLoadPromise = loadFromStorageAsync();
+    void lastPomodoroLoadPromise;
 
     const unsubPersist = subscribe(pomodoroStore, () => {
       if (!pomodoroStore.hydrated) return;
       persistConfigIfChanged();
-      persistLogsIfChanged();
+      persistActiveSessionIfChanged();
     });
+
+    /** Pause if counting down, then persist active session synchronously (best-effort before teardown). */
+    const flushLeavePage = (): void => {
+      pauseActiveSessionForUnload();
+      writeActiveSessionFileToLocalStorage();
+      void flushPomodoroPersistToStorage();
+    };
+
+    const onVisibility = (): void => {
+      if (document.visibilityState === "hidden") {
+        writeActiveSessionFileToLocalStorage();
+        void flushPomodoroPersistToStorage();
+      } else {
+        void syncPomodoroCalendarDayIfNeededAsync();
+      }
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("beforeunload", flushLeavePage);
+      window.addEventListener("pagehide", flushLeavePage);
+      document.addEventListener("visibilitychange", onVisibility);
+    }
+
+    const dayTimer =
+      typeof window !== "undefined"
+        ? window.setInterval(() => {
+            void syncPomodoroCalendarDayIfNeededAsync();
+          }, DAY_CHECK_INTERVAL_MS)
+        : null;
 
     const stopEngine =
       typeof window !== "undefined"
@@ -244,6 +316,13 @@ export const pomodoroActions = {
     return () => {
       stopEngine();
       unsubPersist();
+      if (typeof window !== "undefined") {
+        window.removeEventListener("beforeunload", flushLeavePage);
+        window.removeEventListener("pagehide", flushLeavePage);
+        document.removeEventListener("visibilitychange", onVisibility);
+      }
+      if (dayTimer != null) window.clearInterval(dayTimer);
+      flushLeavePage();
     };
   },
   selectPhase: function selectPhase(next: PomodoroPhase): void {
@@ -308,35 +387,46 @@ export const pomodoroActions = {
     const current = pomodoroStore.phase;
     finalizeActivePhase();
 
-    const day = localDayKey();
-    const next = current === "work" ? nextBreakType(day) : "work"; // always go to work after a break
-    applyPhaseWithFullDuration(next);
-    beginRunningPhaseFromConfig();
+    void persistTail.then(() => {
+      const day = localDayKey();
+      const next = current === "work" ? nextBreakType(day) : "work"; // always go to work after a break
+      applyPhaseWithFullDuration(next);
+      beginRunningPhaseFromConfig();
+    });
   },
 
-  exportData: function exportData(): PomodoroExportV1 {
+  exportData: async function exportData(): Promise<PomodoroExportV1> {
+    await flushPomodoroPersistToStorage();
+    const logs = await collectPomodoroLogsForExport();
     return {
       version: POMODORO_EXPORT_VERSION,
       config: pickPersistedConfig(),
-      logs: pickPersistedLogs(),
+      logs: { days: logs.days },
     };
   },
 
   /**
    * Accepts `{ version, config, logs }` or a legacy `{ config, logs }` object (no `version` field).
    */
-  importData: function importData(data: unknown): void {
+  importData: async function importData(data: unknown): Promise<void> {
     const slice = migratePomodoroSliceToLatest(data);
     pomodoroStore.config.workDurationMs = slice.config.workDurationMs;
     pomodoroStore.config.shortBreakDurationMs = slice.config.shortBreakDurationMs;
     pomodoroStore.config.longBreakDurationMs = slice.config.longBreakDurationMs;
-    pomodoroStore.dayLogs = { ...slice.logs.days };
     pomodoroStore.activePhaseRun = null;
     if (typeof window === "undefined") return;
+    clearActiveSessionStorage();
     lastConfigJson = JSON.stringify(slice.config);
-    lastLogsJson = JSON.stringify(slice.logs);
     storageSetItemStrict(CONFIG_KEY, lastConfigJson);
-    storageSetItemStrict(LOGS_KEY, lastLogsJson);
+    const logsExport: PomodoroLogsExport = {
+      days: {},
+    };
+    for (const [day, log] of Object.entries(slice.logs.days)) {
+      logsExport.days[day] = { entries: [...log.entries] };
+    }
+    await flushPomodoroPersistToStorage();
+    await replaceAllPomodoroLogsFromImport(logsExport);
+    await hydrateTodayLogFromIndexedDb();
   },
 };
 
@@ -396,7 +486,17 @@ function useWallNowMs(needsWallClock: boolean): number {
   return nowMs;
 }
 
-/** Append completed phase to today’s log and clear activePhaseRun when it matches. */
+function logRecordToStored(r: PomodoroLogRecord): PomodoroLogEntryStored {
+  return {
+    id: r.id,
+    phase: r.phase,
+    startedAtMs: r.startedAtMs,
+    endedAtMs: r.endedAtMs,
+    pauses: r.pauses.map((p) => ({ startMs: p.startMs, endMs: p.endMs })),
+  };
+}
+
+/** Append completed phase to the in-memory day bucket and clear activePhaseRun when it matches. */
 function finalizeActivePhase(): boolean {
   const r = pomodoroStore.activePhaseRun;
   if (!r) return false;
@@ -408,21 +508,91 @@ function finalizeActivePhase(): boolean {
     pauses.push({ startMs: r.openPauseStartMs, endMs: endedAtMs });
   }
 
-  ensureDayLog(day).entries.push({
+  const id = crypto.randomUUID();
+  const entry: PomodoroLogEntryStored = {
+    id,
     phase: r.phase,
     startedAtMs: r.phaseStartedAtMs,
     endedAtMs,
     pauses,
-  });
+  };
   pomodoroStore.activePhaseRun = null;
+
+  if (day === pomodoroStore.dayKey) {
+    pomodoroStore.dayLog.entries.push(entry);
+    enqueuePomodoroLogPersistSingle(id, day, entry);
+  } else {
+    persistTail = persistTail
+      .then(async () => {
+        const rows = await getSortedPomodoroLogRecordsForDay(day);
+        pomodoroStore.dayKey = day;
+        pomodoroStore.dayLog = {
+          entries: [...rows.map(logRecordToStored), entry],
+        };
+        await applyPomodoroLogWrites({
+          putRecords: [
+            {
+              id,
+              day,
+              phase: entry.phase,
+              startedAtMs: entry.startedAtMs,
+              endedAtMs: entry.endedAtMs,
+              pauses: entry.pauses.map((p) => ({ startMs: p.startMs, endMs: p.endMs })),
+            },
+          ],
+        });
+      })
+      .catch((err: unknown) => {
+        log.warn("pomodoro: IndexedDB persist failed", err);
+      });
+  }
   return true;
 }
 
-function ensureDayLog(day: string): PomodoroDayLogV1 {
-  if (!pomodoroStore.dayLogs[day]) {
-    pomodoroStore.dayLogs[day] = { entries: [] };
+function enqueuePomodoroLogPersistSingle(
+  id: string,
+  day: string,
+  e: PomodoroLogEntryStored,
+): void {
+  persistTail = persistTail
+    .then(() =>
+      applyPomodoroLogWrites({
+        putRecords: [
+          {
+            id,
+            day,
+            phase: e.phase,
+            startedAtMs: e.startedAtMs,
+            endedAtMs: e.endedAtMs,
+            pauses: e.pauses.map((p) => ({ startMs: p.startMs, endMs: p.endMs })),
+          },
+        ],
+      }),
+    )
+    .catch((err: unknown) => {
+      log.warn("pomodoro: IndexedDB persist failed", err);
+    });
+}
+
+async function hydrateTodayLogFromIndexedDb(): Promise<void> {
+  const today = localDayKey();
+  const rows = await getSortedPomodoroLogRecordsForDay(today);
+  pomodoroStore.dayKey = today;
+  pomodoroStore.dayLog = {
+    entries: rows.map(logRecordToStored),
+  };
+}
+
+async function syncPomodoroCalendarDayIfNeededAsync(): Promise<void> {
+  if (!pomodoroStore.hydrated) return;
+  const today = localDayKey();
+  if (pomodoroStore.dayKey === today) return;
+  await flushPomodoroPersistToStorage();
+  try {
+    await hydrateTodayLogFromIndexedDb();
+  } catch (e: unknown) {
+    log.error("pomodoro: calendar day sync failed", e);
   }
-  return pomodoroStore.dayLogs[day];
 }
 
 function applyPhaseWithFullDuration(next: PomodoroPhase): void {
@@ -453,9 +623,8 @@ function nextBreakType(day: string): PomodoroPhase {
 }
 
 function countPomodoroSessions(day: string): number {
-  const log = pomodoroStore.dayLogs[day];
-  if (!log) return 0;
-  return log.entries.filter((e) => e.phase === "work").length;
+  if (day !== pomodoroStore.dayKey) return 0;
+  return pomodoroStore.dayLog.entries.filter((e) => e.phase === "work").length;
 }
 
 // --- time-related helpers ---
@@ -508,9 +677,190 @@ function workMsFromActiveRun(r: ActivePhaseRun): number {
 // --- storage ---
 
 let lastConfigJson = "";
-let lastLogsJson = "";
+let lastActiveJson = "";
 
-function loadFromStorage(): void {
+function cloneActivePhaseRunForPersist(r: ActivePhaseRun): ActivePhaseRun {
+  return {
+    phase: r.phase,
+    phaseStartedAtMs: r.phaseStartedAtMs,
+    intendedDurationMs: r.intendedDurationMs,
+    pauses: r.pauses.map((p) => ({ startMs: p.startMs, endMs: p.endMs })),
+    openPauseStartMs: r.openPauseStartMs,
+    deadlineCrossedNotified: r.deadlineCrossedNotified,
+  };
+}
+
+function buildActiveSessionFilePayload(): PomodoroActiveSessionFileV1 | null {
+  const r = pomodoroStore.activePhaseRun;
+  if (!r) return null;
+  return {
+    version: POMODORO_ACTIVE_SESSION_FILE_VERSION,
+    phase: r.phase,
+    activePhaseRun: cloneActivePhaseRunForPersist(r),
+  };
+}
+
+/**
+ * If the session was left “running” (unload save missed), we cannot trust wall time: either enter a
+ * pause now when there was prior pause history, or drop the session when there was none.
+ */
+function reconcileActiveSessionAfterLoad(run: ActivePhaseRun): ActivePhaseRun | null {
+  if (run.openPauseStartMs != null) {
+    return run;
+  }
+  if (run.pauses.length > 0) {
+    return {
+      phase: run.phase,
+      phaseStartedAtMs: run.phaseStartedAtMs,
+      intendedDurationMs: run.intendedDurationMs,
+      pauses: run.pauses.map((p) => ({ startMs: p.startMs, endMs: p.endMs })),
+      openPauseStartMs: Date.now(),
+      deadlineCrossedNotified: run.deadlineCrossedNotified,
+    };
+  }
+  return null;
+}
+
+/** @internal */
+export function __reconcileActiveSessionAfterLoadForTests(run: ActivePhaseRun): ActivePhaseRun | null {
+  return reconcileActiveSessionAfterLoad(run);
+}
+
+function parsePauseSpan(x: unknown): PomodoroPauseSpan | null {
+  if (!isRecord(x)) return null;
+  if (typeof x.startMs !== "number" || typeof x.endMs !== "number") return null;
+  return { startMs: x.startMs, endMs: x.endMs };
+}
+
+function parseActivePhaseRun(x: unknown): ActivePhaseRun | null {
+  if (!isRecord(x)) return null;
+  if (!isPomodoroPhase(x.phase)) return null;
+  if (typeof x.phaseStartedAtMs !== "number" || typeof x.intendedDurationMs !== "number") return null;
+  if (!Array.isArray(x.pauses)) return null;
+  const pauses: PomodoroPauseSpan[] = [];
+  for (const p of x.pauses) {
+    const span = parsePauseSpan(p);
+    if (!span) return null;
+    pauses.push(span);
+  }
+  let openPauseStartMs: number | null;
+  if (x.openPauseStartMs === null || x.openPauseStartMs === undefined) {
+    openPauseStartMs = null;
+  } else if (typeof x.openPauseStartMs === "number") {
+    openPauseStartMs = x.openPauseStartMs;
+  } else {
+    return null;
+  }
+  if (typeof x.deadlineCrossedNotified !== "boolean") return null;
+  return {
+    phase: x.phase,
+    phaseStartedAtMs: x.phaseStartedAtMs,
+    intendedDurationMs: x.intendedDurationMs,
+    pauses,
+    openPauseStartMs,
+    deadlineCrossedNotified: x.deadlineCrossedNotified,
+  };
+}
+
+function parseActiveSessionFileV1(data: unknown): PomodoroActiveSessionFileV1 | null {
+  if (!isRecord(data)) return null;
+  if (data.version !== POMODORO_ACTIVE_SESSION_FILE_VERSION) return null;
+  if (!isPomodoroPhase(data.phase)) return null;
+  const run = parseActivePhaseRun(data.activePhaseRun);
+  if (!run) return null;
+  if (run.phase !== data.phase) return null;
+  return {
+    version: POMODORO_ACTIVE_SESSION_FILE_VERSION,
+    phase: data.phase,
+    activePhaseRun: run,
+  };
+}
+
+function clearActiveSessionStorage(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(ACTIVE_SESSION_KEY);
+  } catch (e: unknown) {
+    log.warn("pomodoro: remove active session key failed", e);
+  }
+  lastActiveJson = "";
+}
+
+function pauseActiveSessionForUnload(): void {
+  const r = pomodoroStore.activePhaseRun;
+  if (r && r.openPauseStartMs === null) {
+    r.openPauseStartMs = Date.now();
+  }
+}
+
+function writeActiveSessionFileToLocalStorage(): void {
+  if (typeof window === "undefined" || !pomodoroStore.hydrated) return;
+  const payload = buildActiveSessionFilePayload();
+  if (!payload) {
+    clearActiveSessionStorage();
+    return;
+  }
+  const s = JSON.stringify(payload);
+  lastActiveJson = s;
+  storageSetItem(ACTIVE_SESSION_KEY, s);
+}
+
+function persistActiveSessionIfChanged(): void {
+  if (typeof window === "undefined" || !pomodoroStore.hydrated) return;
+  const payload = buildActiveSessionFilePayload();
+  if (!payload) {
+    if (lastActiveJson !== "") {
+      clearActiveSessionStorage();
+    }
+    lastActiveJson = "";
+    return;
+  }
+  const s = JSON.stringify(payload);
+  if (s === lastActiveJson) return;
+  lastActiveJson = s;
+  storageSetItem(ACTIVE_SESSION_KEY, s);
+}
+
+function loadActiveSessionFromStorage(): void {
+  if (typeof window === "undefined") return;
+  let raw: string | null;
+  try {
+    raw = localStorage.getItem(ACTIVE_SESSION_KEY);
+  } catch {
+    raw = null;
+  }
+  if (!raw) {
+    lastActiveJson = "";
+    return;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    clearActiveSessionStorage();
+    lastActiveJson = "";
+    return;
+  }
+  const file = parseActiveSessionFileV1(parsed);
+  if (!file) {
+    clearActiveSessionStorage();
+    lastActiveJson = "";
+    return;
+  }
+  const run = reconcileActiveSessionAfterLoad(file.activePhaseRun);
+  pomodoroStore.phase = file.phase;
+  if (!run) {
+    pomodoroStore.activePhaseRun = null;
+    clearActiveSessionStorage();
+    lastActiveJson = "";
+    return;
+  }
+  pomodoroStore.activePhaseRun = run;
+  const canonical = buildActiveSessionFilePayload();
+  lastActiveJson = canonical ? JSON.stringify(canonical) : "";
+}
+
+async function loadFromStorageAsync(): Promise<void> {
   if (typeof window === "undefined") return;
   migrateLegacyPersistKeysOnce();
   try {
@@ -520,40 +870,39 @@ function loadFromStorage(): void {
       if (isRecord(parsed)) applyConfigRecord(parsed);
     }
 
-    const logsRaw = localStorage.getItem(LOGS_KEY);
-    if (logsRaw) {
-      const parsed = JSON.parse(logsRaw) as unknown;
-      if (isRecord(parsed)) {
-        pomodoroStore.dayLogs = parseLogsPayload(parsed);
-      }
-    }
+    await migrateLegacyPomodoroLocalStorageToIndexedDb();
+    await hydrateTodayLogFromIndexedDb();
   } catch (e: unknown) {
-    log.error("pomodoro: failed to load config or logs from localStorage", e);
+    log.error("pomodoro: failed to load config or work log from storage", e);
+    pomodoroStore.dayKey = localDayKey();
+    pomodoroStore.dayLog = { entries: [] };
   }
 
-  pomodoroStore.activePhaseRun = null;
+  try {
+    loadActiveSessionFromStorage();
+  } catch (e: unknown) {
+    log.warn("pomodoro: failed to load active session from storage", e);
+    pomodoroStore.activePhaseRun = null;
+    clearActiveSessionStorage();
+    lastActiveJson = "";
+  }
+
   lastConfigJson = JSON.stringify(pickPersistedConfig());
-  lastLogsJson = JSON.stringify(pickPersistedLogs());
   pomodoroStore.hydrated = true;
+}
+
+/** Await pending IndexedDB log writes. Use before export/download. */
+export async function flushPomodoroPersistToStorage(): Promise<void> {
+  await persistTail;
+}
+
+/** @internal Wait for the initial IndexedDB load started by {@link pomodoroActions.init}. */
+export async function __awaitPomodoroStoreHydrationForTests(): Promise<void> {
+  await lastPomodoroLoadPromise;
 }
 
 function pickPersistedConfig(): PomodoroConfigV1 {
   return { ...pomodoroStore.config };
-}
-
-function pickPersistedLogs(): PomodoroLogsV1 {
-  const days: Record<string, PomodoroDayLogV1> = {};
-  for (const [k, v] of Object.entries(pomodoroStore.dayLogs)) {
-    days[k] = {
-      entries: v.entries.map((e) => ({
-        phase: e.phase,
-        startedAtMs: e.startedAtMs,
-        endedAtMs: e.endedAtMs,
-        pauses: e.pauses.map((p) => ({ startMs: p.startMs, endMs: p.endMs })),
-      })),
-    };
-  }
-  return { days };
 }
 
 function storageSetItem(key: string, value: string): void {
@@ -579,14 +928,6 @@ function persistConfigIfChanged(): void {
   if (s === lastConfigJson) return;
   lastConfigJson = s;
   storageSetItem(CONFIG_KEY, s);
-}
-
-function persistLogsIfChanged(): void {
-  if (typeof window === "undefined") return;
-  const s = JSON.stringify(pickPersistedLogs());
-  if (s === lastLogsJson) return;
-  lastLogsJson = s;
-  storageSetItem(LOGS_KEY, s);
 }
 
 function isRecord(x: unknown): x is Record<string, unknown> {
