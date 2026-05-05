@@ -101,6 +101,8 @@ export type PomodoroLoggedPhase = {
   startedAtMs: number;
   endedAtMs: number;
   pauses: PomodoroPauseSpan[];
+  /** Soft-delete marker; null means visible/active. */
+  deletedAtMs: number | null;
 };
 
 /** JSON / export: ordered history for a single local day (no per-entry ids). */
@@ -411,6 +413,13 @@ export const pomodoroActions = {
       beginRunningPhaseFromConfig();
     });
   },
+  deleteTodayLogEntry: function deleteTodayLogEntry(entryId: string): void {
+    if (!entryId) return;
+    const entry = pomodoroStore.dayLog.entries.find((item) => item.id === entryId);
+    if (!entry || entry.deletedAtMs != null) return;
+    entry.deletedAtMs = Date.now();
+    enqueuePomodoroLogPersistSingle(entryId, pomodoroStore.dayKey, entry);
+  },
 
   exportData: async function exportData(): Promise<PomodoroExportV1> {
     await flushPomodoroPersistToStorage();
@@ -510,6 +519,7 @@ function logRecordToStored(r: PomodoroLogRecord): PomodoroLogEntryStored {
     startedAtMs: r.startedAtMs,
     endedAtMs: r.endedAtMs,
     pauses: r.pauses.map((p) => ({ startMs: p.startMs, endMs: p.endMs })),
+    deletedAtMs: typeof r.deletedAtMs === "number" ? r.deletedAtMs : null,
   };
 }
 
@@ -532,6 +542,7 @@ function finalizeActivePhase(): boolean {
     startedAtMs: r.phaseStartedAtMs,
     endedAtMs,
     pauses,
+    deletedAtMs: null,
   };
   pomodoroStore.activePhaseRun = null;
 
@@ -555,6 +566,7 @@ function finalizeActivePhase(): boolean {
               startedAtMs: entry.startedAtMs,
               endedAtMs: entry.endedAtMs,
               pauses: entry.pauses.map((p) => ({ startMs: p.startMs, endMs: p.endMs })),
+              deletedAtMs: entry.deletedAtMs,
             },
           ],
         });
@@ -582,6 +594,7 @@ function enqueuePomodoroLogPersistSingle(
             startedAtMs: e.startedAtMs,
             endedAtMs: e.endedAtMs,
             pauses: e.pauses.map((p) => ({ startMs: p.startMs, endMs: p.endMs })),
+            deletedAtMs: e.deletedAtMs,
           },
         ],
       }),
@@ -641,7 +654,7 @@ function nextBreakType(day: string): PomodoroPhase {
 
 function countPomodoroSessions(day: string): number {
   if (day !== pomodoroStore.dayKey) return 0;
-  return pomodoroStore.dayLog.entries.filter((e) => e.phase === "work").length;
+  return pomodoroStore.dayLog.entries.filter((e) => e.phase === "work" && e.deletedAtMs == null).length;
 }
 
 // --- time-related helpers ---
@@ -674,7 +687,7 @@ function runEndWallMs(r: Snapshot<ActivePhaseRun>): number {
 }
 
 function workMsFromEntry(e: Snapshot<PomodoroLoggedPhase>): number {
-  if (e.phase !== "work") return 0;
+  if (e.phase !== "work" || e.deletedAtMs != null) return 0;
   const gross = e.endedAtMs - e.startedAtMs;
   const paused = e.pauses.reduce((s, p) => s + (p.endMs - p.startMs), 0);
   return Math.max(0, gross - paused);
@@ -976,6 +989,7 @@ function parseDayLogEntry(x: unknown): PomodoroLoggedPhase | null {
     startedAtMs: x.startedAtMs,
     endedAtMs: x.endedAtMs,
     pauses,
+    deletedAtMs: null,
   };
 }
 

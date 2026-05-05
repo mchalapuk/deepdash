@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ActionIcon,
   Box,
   Group,
   Paper,
@@ -9,14 +10,17 @@ import {
   Space,
   Stack,
   Text,
+  Tooltip,
   VisuallyHidden,
 } from "@mantine/core";
+import { IconTrash } from "@tabler/icons-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { type Snapshot } from "valtio";
 import {
   type ActivePhaseRun,
   type PomodoroLoggedPhase,
   type PomodoroPauseSpan,
+  pomodoroActions,
   usePomodoroHydrated,
   useTodayPomodoroDaySlice,
   useTodayWorkMsDisplay,
@@ -79,7 +83,12 @@ export function TodaysWork() {
           ) : (
             <Stack component="ul" gap="xs" style={{ listStyle: "none", margin: 0, padding: 0 }}>
               {rows.reverse().map((row, i) => (
-                <SessionBlock key={row.key} index={rows.length - i} row={row} />
+                <SessionBlock
+                  key={row.key}
+                  index={rows.length - i}
+                  row={row}
+                  onDelete={(entryId) => pomodoroActions.deleteTodayLogEntry(entryId)}
+                />
               ))}
             </Stack>
           )}
@@ -141,28 +150,64 @@ function TodaysWorkSessionListSkeleton() {
 
 /** Snapshot-safe shape from {@link useTodayPomodoroDaySlice} day entries */
 type WorkLogEntry = {
+  readonly id: string;
   readonly phase: PomodoroLoggedPhase["phase"];
   readonly startedAtMs: number;
   readonly endedAtMs: number;
   readonly pauses: readonly PomodoroPauseSpan[];
+  readonly deletedAtMs: number | null;
 };
 
 type TodayRow =
   | { key: string; kind: "completed"; entry: WorkLogEntry }
   | { key: string; kind: "active"; run: Snapshot<ActivePhaseRun>; nowMs: number };
 
-function SessionBlock({ index, row }: { index: number; row: TodayRow }) {
+function SessionBlock({
+  index,
+  row,
+  onDelete,
+}: {
+  index: number;
+  row: TodayRow;
+  onDelete: (entryId: string) => void;
+}) {
   if (row.kind === "completed") {
     const e = row.entry;
     const focusMs = workFocusMsFromEntry(e);
+    const deleteLabel = "Delete worklog item";
     return (
-      <Paper w="100%" px={12} py={12} style={{ backgroundColor: "rgba(0, 0, 0, 0.6)", opacity: 0.5 }}>
+      <Paper w="100%" px={12} py={12} style={{ backgroundColor: "rgba(0, 0, 0, 0.6)", opacity: 0.5 }} className="session">
         <Stack component="li" gap="xs" w="100%">
-          <SessionRow
-            session={`# ${index}`}
-            span={formatTimeRange(e.startedAtMs, e.endedAtMs)}
-            duration={formatDurationMs(focusMs)}
-          />
+          <Group wrap="nowrap" gap="0" align="center">
+            <SessionRow
+              session={`# ${index}`}
+              span={formatTimeRange(e.startedAtMs, e.endedAtMs)}
+              duration={formatDurationMs(focusMs)}
+            />
+            <Tooltip
+              label={e.deletedAtMs == null ? deleteLabel : "Worklog item is deleted"}
+              position="top-end"
+              offset={{ mainAxis: 8, alignmentAxis: -9 }}
+              withArrow
+              arrowSize={8}
+              arrowOffset={15}
+              color="darker.7"
+              openDelay={500}
+              transitionProps={{ transition: 'fade-up', duration: 300 }}
+            >
+              <ActionIcon
+                variant="subtle"
+                color="gray.5"
+                size="sm"
+                mr={-3}
+                aria-label={deleteLabel}
+                onClick={() => onDelete(e.id)}
+                className="opacity-0 transition-opacity duration-300 [.session:hover_&]:opacity-100"
+              >
+                <IconTrash size={14} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
           <PauseSublist pauses={e.pauses} />
         </Stack>
       </Paper>
@@ -221,14 +266,14 @@ function PauseSublist({
 
 function SessionRow({ session, span, duration, fontSize = "sm", color = "foreground", component = "span" }: { session: string; span: string; duration: string; fontSize?: string; color?: string; component?: string }) {
   return (
-    <Group w="100%" wrap="nowrap" component={component}>
+    <Group wrap="nowrap" component={component} className="w-[calc(100%-19px)]">
       <Text size={fontSize} fw={500} w="20%" miw="60px" c={color}>
         {session}
       </Text>
       <Text size={fontSize} fw={500} style={{ flexGrow: 1, whiteSpace: "nowrap" }} c={color}>
         {span}
       </Text>
-      <Text size={fontSize} fw={500} w="25%" miw="60px" c={color}>
+      <Text size={fontSize} fw={500} w="20.5%" miw="60px" c={color}>
         {duration}
       </Text>
     </Group>
@@ -254,10 +299,10 @@ function buildTodayWorkRows(
   nowMs: number,
 ): TodayRow[] {
   const completed = entries
-    .filter((e) => e.phase === "work")
+    .filter((e) => e.phase === "work" && e.deletedAtMs == null)
     .map(
       (entry, i): TodayRow => ({
-        key: `done-${entry.startedAtMs}-${i}`,
+        key: `done-${entry.id}-${entry.startedAtMs}-${i}`,
         kind: "completed",
         entry,
       }),

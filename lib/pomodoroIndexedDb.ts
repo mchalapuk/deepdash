@@ -42,6 +42,8 @@ export type PomodoroLogRecord = {
   startedAtMs: number;
   endedAtMs: number;
   pauses: PomodoroPauseSpan[];
+  /** Soft-delete marker; null means active. */
+  deletedAtMs?: number | null;
 };
 
 /** JSON export shape: per-day ordered list (no row ids). */
@@ -50,6 +52,7 @@ export type PomodoroLoggedPhaseExport = {
   startedAtMs: number;
   endedAtMs: number;
   pauses: PomodoroPauseSpan[];
+  deletedAtMs: number | null;
 };
 
 export type PomodoroDayLogExport = {
@@ -119,6 +122,7 @@ export async function collectPomodoroLogsForExport(): Promise<PomodoroLogsExport
         startedAtMs: r.startedAtMs,
         endedAtMs: r.endedAtMs,
         pauses: r.pauses.map((p) => ({ startMs: p.startMs, endMs: p.endMs })),
+        deletedAtMs: typeof r.deletedAtMs === "number" ? r.deletedAtMs : null,
       })),
     };
   }
@@ -141,6 +145,7 @@ export async function replaceAllPomodoroLogsFromImport(logs: PomodoroLogsExport)
         startedAtMs: e.startedAtMs,
         endedAtMs: e.endedAtMs,
         pauses: e.pauses.map((p) => ({ startMs: p.startMs, endMs: p.endMs })),
+        deletedAtMs: typeof e.deletedAtMs === "number" ? e.deletedAtMs : null,
       });
     }
   }
@@ -187,6 +192,7 @@ export async function migrateLegacyPomodoroLocalStorageToIndexedDb(): Promise<vo
                 startedAtMs: rec.startedAtMs,
                 endedAtMs: rec.endedAtMs,
                 pauses: rec.pauses,
+                deletedAtMs: null,
               });
             }
           }
