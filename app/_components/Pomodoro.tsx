@@ -21,6 +21,7 @@ import log from "@/lib/logger";
 import {
   pomodoroActions,
   useActivePhaseDeadlineCrossed,
+  useActivePhaseMidnightContinuation,
   useActivePhaseRunStartedAt,
   useCurrentPhase,
   useCurrentPhaseExpired,
@@ -37,6 +38,7 @@ const POMODORO_MAIN_WAV = "/PomodoroChime_main.wav";
 
 export function Pomodoro() {
   const [phase, running, paused] = usePomodoroMechanics();
+  usePauseOnTimeDrift();
 
   return (
     <Paper
@@ -332,6 +334,7 @@ function usePomodoroMechanics(): [PomodoroPhase, boolean, boolean] {
   const secondsRemaining = useSecondsRemaining();
   const runStartedAt = useActivePhaseRunStartedAt();
   const deadlineCrossed = useActivePhaseDeadlineCrossed();
+  const midnightContinuation = useActivePhaseMidnightContinuation();
 
   useEffect(() => {
     if (runStartedAt == null) {
@@ -341,6 +344,10 @@ function usePomodoroMechanics(): [PomodoroPhase, boolean, boolean] {
 
   useEffect(() => {
     if (!running || paused || runStartedAt == null) return;
+    if (midnightContinuation) {
+      introPlayedForRunStartedAtRef.current = runStartedAt;
+      return;
+    }
     if (secondsRemaining > 4 || secondsRemaining < 1) return;
     if (introPlayedForRunStartedAtRef.current === runStartedAt) return;
 
@@ -351,7 +358,7 @@ function usePomodoroMechanics(): [PomodoroPhase, boolean, boolean] {
     void introEl.play().catch((err: unknown) => {
       log.error("pomodoro: failed to play intro chime", err);
     });
-  }, [running, paused, runStartedAt, secondsRemaining]);
+  }, [running, paused, runStartedAt, secondsRemaining, midnightContinuation]);
 
   useEffect(() => {
     if (deadlineCrossed) return;
@@ -367,6 +374,63 @@ function usePomodoroMechanics(): [PomodoroPhase, boolean, boolean] {
   }, []);
 
   return [phase, running, paused];
+}
+
+/** Keep in sync with `POMODORO_TIMER_INTERVAL_MS` in `app/_stores/pomodoroStore.ts`. */
+const POMODORO_TICK_MS = 1000;
+/** Consecutive interval fires later than this vs an ideal tick count toward pausing. */
+const TICK_DRIFT_THRESHOLD_MS = 500;
+/** Consecutive interval fires later than this vs an ideal tick count toward pausing. */
+const PAUSE_STREAK_THRESHOLD = 3;
+
+function usePauseOnTimeDrift(): void {
+  // Drift detection uses setTimeout instead of setInterval because the system seems
+  // to prioritise timers created before the lid was closed.
+  const running = useIsRunning();
+  const paused = useIsPaused();
+  const streakRef = useRef(0);
+  const lastTickRef = useRef(0);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!running || paused) {
+      streakRef.current = 0;
+      return;
+    }
+
+    streakRef.current = 0;
+    lastTickRef.current = performance.now();
+
+    let timeoutId: number | undefined;
+
+    const tick = (): void => {
+      const now = performance.now();
+      const delta = now - lastTickRef.current;
+      lastTickRef.current = now;
+
+      if (delta > POMODORO_TICK_MS + TICK_DRIFT_THRESHOLD_MS) {
+        streakRef.current += 1;
+        console.log("streak", streakRef.current);
+        if (streakRef.current >= PAUSE_STREAK_THRESHOLD) {
+          streakRef.current = 0;
+          pomodoroActions.pause();
+          console.log("pausing");
+          return;
+        }
+      } else {
+        streakRef.current = 0;
+        console.log("resetting streak");
+      }
+
+      timeoutId = window.setTimeout(tick, POMODORO_TICK_MS) as number;
+    };
+
+    timeoutId = window.setTimeout(tick, POMODORO_TICK_MS) as number;
+
+    return () => {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    };
+  }, [running, paused]);
 }
 
 function phaseTitle(p: PomodoroPhase): string {

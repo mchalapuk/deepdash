@@ -61,6 +61,7 @@ describe("dataExport migrations", () => {
                   phase: "work",
                   startedAtMs: 1000,
                   endedAtMs: 2000,
+                  deletedAtMs: null,
                   pauses: [{ startMs: 1100, endMs: 1200 }],
                 },
               ],

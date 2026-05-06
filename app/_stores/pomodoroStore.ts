@@ -138,6 +138,11 @@ export type ActivePhaseRun = {
   openPauseStartMs: number | null;
   /** After the wall-clock deadline passes, `init`’s `onPhaseDeadlineCrossed` runs once per run. */
   deadlineCrossedNotified: boolean;
+  /**
+   * True when this run continues an in-flight phase that was split at local midnight. UI may skip
+   * “brand new run” cues.
+   */
+  midnightSplitContinuation?: boolean;
 };
 
 /** localStorage snapshot for the active-session key (in-flight session only). */
@@ -227,6 +232,11 @@ export function useActivePhaseRunStartedAt(): number | null {
 /** True after the countdown hits zero until `nextPhase` / skip / tab change clears the run. */
 export function useActivePhaseDeadlineCrossed(): boolean {
   return useSnapshot(pomodoroStore).activePhaseRun?.deadlineCrossedNotified ?? false;
+}
+
+/** True when the active run is the post-midnight segment of a calendar-day split. */
+export function useActivePhaseMidnightContinuation(): boolean {
+  return useSnapshot(pomodoroStore).activePhaseRun?.midnightSplitContinuation === true;
 }
 
 type PomodoroSnap = {
@@ -460,10 +470,13 @@ function startPomodoroTimerEngine(
   onPhaseDeadlineCrossed?: (completedPhase: PomodoroPhase) => void,
 ): () => void {
   const id = window.setInterval(() => {
+    const nowMs = Date.now();
+    maybeSplitActivePhaseAtLocalMidnight(nowMs);
+
     const r = pomodoroStore.activePhaseRun;
     const running = isRunning(r);
 
-    if (running && r && Date.now() >= flipClockEndsAtMs(pomodoroStore)) {
+    if (running && r && nowMs >= flipClockEndsAtMs(pomodoroStore)) {
       if (!r.deadlineCrossedNotified) {
         r.deadlineCrossedNotified = true;
         onPhaseDeadlineCrossed?.(pomodoroStore.phase);
@@ -523,17 +536,32 @@ function logRecordToStored(r: PomodoroLogRecord): PomodoroLogEntryStored {
   };
 }
 
-/** Append completed phase to the in-memory day bucket and clear activePhaseRun when it matches. */
 function finalizeActivePhase(): boolean {
+  return finalizeActivePhaseWithEndedAt(Date.now());
+}
+
+/**
+ * Completes the active phase as of `endedAtMs` (wall clock), appends a day-log entry, clears
+ * `activePhaseRun`. When `pausesForEntry` is set, it must already include any synthetic close for an
+ * open pause (midnight split supplies fully-built pause lists).
+ */
+function finalizeActivePhaseWithEndedAt(
+  endedAtMs: number,
+  opts?: { pausesForEntry?: PomodoroPauseSpan[] },
+): boolean {
   const r = pomodoroStore.activePhaseRun;
   if (!r) return false;
 
-  const endedAtMs = Date.now();
   const day = localDayKey(new Date(endedAtMs));
-  const pauses = [...r.pauses];
-  if (r.openPauseStartMs != null) {
-    pauses.push({ startMs: r.openPauseStartMs, endMs: endedAtMs });
-  }
+  const pauses =
+    opts?.pausesForEntry ??
+    (() => {
+      const out = [...r.pauses];
+      if (r.openPauseStartMs != null) {
+        out.push({ startMs: r.openPauseStartMs, endMs: endedAtMs });
+      }
+      return out;
+    })();
 
   const id = crypto.randomUUID();
   const entry: PomodoroLogEntryStored = {
@@ -686,6 +714,84 @@ function runEndWallMs(r: Snapshot<ActivePhaseRun>): number {
   return r.phaseStartedAtMs + r.intendedDurationMs + closedPauseWallMs(r);
 }
 
+/** Last local wall-clock millisecond of the calendar day containing `forWallMs` (23:59:59.999). */
+function endOfLocalDayMs(forWallMs: number): number {
+  const d = new Date(forWallMs);
+  const nextMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0, 0);
+  return nextMidnight.getTime() - 1;
+}
+
+function startOfNextLocalDayMs(forWallMs: number): number {
+  return endOfLocalDayMs(forWallMs) + 1;
+}
+
+function buildFirstSegmentPausesForMidnightSplit(r: ActivePhaseRun, endedAtMs: number): PomodoroPauseSpan[] {
+  const phaseStart = r.phaseStartedAtMs;
+  const first: PomodoroPauseSpan[] = [];
+
+  for (const p of r.pauses) {
+    const fs = Math.max(p.startMs, phaseStart);
+    const fe = Math.min(p.endMs, endedAtMs);
+    if (fe > fs) first.push({ startMs: fs, endMs: fe });
+  }
+
+  if (r.openPauseStartMs != null) {
+    const o = r.openPauseStartMs;
+    const fs = Math.max(o, phaseStart);
+    const fe = endedAtMs;
+    if (fe > fs) first.push({ startMs: fs, endMs: fe });
+  }
+
+  return first;
+}
+
+function buildContinuationPausesForMidnightSplit(r: ActivePhaseRun, startNextMs: number): PomodoroPauseSpan[] {
+  const cont: PomodoroPauseSpan[] = [];
+  for (const p of r.pauses) {
+    const cs = Math.max(p.startMs, startNextMs);
+    const ce = p.endMs;
+    if (ce > cs) cont.push({ startMs: cs, endMs: ce });
+  }
+  return cont;
+}
+
+/**
+ * If the active phase started on a prior local calendar day, close that segment at 23:59:59.999 and
+ * continue with a new run beginning at 00:00:00.000 whose intended length preserves the original
+ * deadline.
+ */
+function maybeSplitActivePhaseAtLocalMidnight(nowMs: number): void {
+  if (!pomodoroStore.hydrated) return;
+  const r = pomodoroStore.activePhaseRun;
+  if (!r || r.deadlineCrossedNotified) return;
+
+  const runStartDay = localDayKey(new Date(r.phaseStartedAtMs));
+  const nowDay = localDayKey(new Date(nowMs));
+  if (runStartDay >= nowDay) return;
+
+  const deadline = flipClockEndsAtMsAt(pomodoroStore, nowMs);
+  const endedAtMs = endOfLocalDayMs(r.phaseStartedAtMs);
+  const startNextMs = startOfNextLocalDayMs(r.phaseStartedAtMs);
+  const firstPauses = buildFirstSegmentPausesForMidnightSplit(r, endedAtMs);
+  const contPauses = buildContinuationPausesForMidnightSplit(r, startNextMs);
+  const wasPaused = r.openPauseStartMs != null;
+  const phase = r.phase;
+
+  finalizeActivePhaseWithEndedAt(endedAtMs, { pausesForEntry: firstPauses });
+
+  const remainingMs = Math.max(0, Math.round(deadline - startNextMs));
+
+  pomodoroStore.activePhaseRun = {
+    phase,
+    phaseStartedAtMs: startNextMs,
+    intendedDurationMs: remainingMs,
+    pauses: contPauses,
+    openPauseStartMs: wasPaused ? startNextMs : null,
+    deadlineCrossedNotified: false,
+    midnightSplitContinuation: true,
+  };
+}
+
 function workMsFromEntry(e: Snapshot<PomodoroLoggedPhase>): number {
   if (e.phase !== "work" || e.deletedAtMs != null) return 0;
   const gross = e.endedAtMs - e.startedAtMs;
@@ -710,7 +816,7 @@ let lastConfigJson = "";
 let lastActiveJson = "";
 
 function cloneActivePhaseRunForPersist(r: ActivePhaseRun): ActivePhaseRun {
-  return {
+  const out: ActivePhaseRun = {
     phase: r.phase,
     phaseStartedAtMs: r.phaseStartedAtMs,
     intendedDurationMs: r.intendedDurationMs,
@@ -718,6 +824,10 @@ function cloneActivePhaseRunForPersist(r: ActivePhaseRun): ActivePhaseRun {
     openPauseStartMs: r.openPauseStartMs,
     deadlineCrossedNotified: r.deadlineCrossedNotified,
   };
+  if (r.midnightSplitContinuation === true) {
+    out.midnightSplitContinuation = true;
+  }
+  return out;
 }
 
 function buildActiveSessionFilePayload(): PomodoroActiveSessionFileV1 | null {
@@ -756,6 +866,45 @@ export function __reconcileActiveSessionAfterLoadForTests(run: ActivePhaseRun): 
   return reconcileActiveSessionAfterLoad(run);
 }
 
+export function __midnightSplitBoundsForTests(forWallMs: number): { endOfDayMs: number; startNextMs: number } {
+  return { endOfDayMs: endOfLocalDayMs(forWallMs), startNextMs: startOfNextLocalDayMs(forWallMs) };
+}
+
+export function __partitionPausesForMidnightSplitForTests(
+  r: ActivePhaseRun,
+  endedAtMs: number,
+  startNextMs: number,
+): { firstSegment: PomodoroPauseSpan[]; continuation: PomodoroPauseSpan[] } {
+  return {
+    firstSegment: buildFirstSegmentPausesForMidnightSplit(r, endedAtMs),
+    continuation: buildContinuationPausesForMidnightSplit(r, startNextMs),
+  };
+}
+
+export function __injectPomodoroMinimalStateForTests(patch: {
+  hydrated?: boolean;
+  dayKey?: string;
+  activePhaseRun?: ActivePhaseRun | null;
+  dayLog?: PomodoroDayLogStored;
+}): void {
+  if (patch.hydrated !== undefined) pomodoroStore.hydrated = patch.hydrated;
+  if (patch.dayKey !== undefined) pomodoroStore.dayKey = patch.dayKey;
+  if (patch.activePhaseRun !== undefined) pomodoroStore.activePhaseRun = patch.activePhaseRun;
+  if (patch.dayLog !== undefined) pomodoroStore.dayLog = patch.dayLog;
+}
+
+export function __getPomodoroActivePhaseRunForTests(): ActivePhaseRun | null {
+  return pomodoroStore.activePhaseRun;
+}
+
+export function __getPomodoroDayLogEntriesForTests(): PomodoroLogEntryStored[] {
+  return [...pomodoroStore.dayLog.entries];
+}
+
+export function __runMidnightSplitForTests(nowMs: number): void {
+  maybeSplitActivePhaseAtLocalMidnight(nowMs);
+}
+
 function parsePauseSpan(x: unknown): PomodoroPauseSpan | null {
   if (!isRecord(x)) return null;
   if (typeof x.startMs !== "number" || typeof x.endMs !== "number") return null;
@@ -782,7 +931,7 @@ function parseActivePhaseRun(x: unknown): ActivePhaseRun | null {
     return null;
   }
   if (typeof x.deadlineCrossedNotified !== "boolean") return null;
-  return {
+  const run: ActivePhaseRun = {
     phase: x.phase,
     phaseStartedAtMs: x.phaseStartedAtMs,
     intendedDurationMs: x.intendedDurationMs,
@@ -790,6 +939,10 @@ function parseActivePhaseRun(x: unknown): ActivePhaseRun | null {
     openPauseStartMs,
     deadlineCrossedNotified: x.deadlineCrossedNotified,
   };
+  if (x.midnightSplitContinuation === true) {
+    run.midnightSplitContinuation = true;
+  }
+  return run;
 }
 
 function parseActiveSessionFileV1(data: unknown): PomodoroActiveSessionFileV1 | null {

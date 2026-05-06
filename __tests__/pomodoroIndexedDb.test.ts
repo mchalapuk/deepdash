@@ -58,6 +58,7 @@ describe("pomodoroIndexedDb", () => {
         phase: "work",
         startedAtMs: 100,
         endedAtMs: 200,
+        deletedAtMs: null,
         pauses: [{ startMs: 120, endMs: 140 }],
       },
     ]);
