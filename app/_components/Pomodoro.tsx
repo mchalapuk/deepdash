@@ -35,10 +35,12 @@ import { FlipTimer } from "./FlipTimer";
 
 const POMODORO_INTRO_WAV = "/PomodoroChime_intro.wav";
 const POMODORO_MAIN_WAV = "/PomodoroChime_main.wav";
+const POMODORO_SILENCE_MP3 = "/silence.mp3";
 
 export function Pomodoro() {
   const [phase, running, paused] = usePomodoroMechanics();
-  usePauseOnTimeDrift();
+  usePomodoroSounds();
+  usePausePomodoroOnAudioPause();
 
   return (
     <Paper
@@ -279,9 +281,41 @@ function PrimaryButton({ phase, running, paused }: { phase: PomodoroPhase, runni
 }
 
 function usePomodoroMechanics(): [PomodoroPhase, boolean, boolean] {
+  useEffect(() => {
+    return pomodoroActions.init({
+      onPhaseDeadlineCrossed: phaseCompleteNotification,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    void Notification.requestPermission?.();
+  }, []);
+
+  const phase = useCurrentPhase();
+  const running = useIsRunning();
+  const paused = useIsPaused();
+
+  return [phase, running, paused];
+}
+
+function usePomodoroSounds(): void {
   const introAudioRef = useRef<HTMLAudioElement | null>(null);
   const mainAudioRef = useRef<HTMLAudioElement | null>(null);
   const introPlayedForRunStartedAtRef = useRef<number | null>(null);
+
+  const running = useIsRunning();
+  const paused = useIsPaused();
+  const secondsRemaining = useSecondsRemaining();
+  const runStartedAt = useActivePhaseRunStartedAt();
+  const deadlineCrossed = useActivePhaseDeadlineCrossed();
+  const midnightContinuation = useActivePhaseMidnightContinuation();
+
+  // Track the previous value of `deadlineCrossed` so we only kick off the main
+  // chime on the false → true transition. Initializing with the current value
+  // avoids re-triggering the chime on first mount when the persisted state
+  // already has the deadline crossed.
+  const prevDeadlineCrossedRef = useRef(deadlineCrossed);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -309,34 +343,6 @@ function usePomodoroMechanics(): [PomodoroPhase, boolean, boolean] {
   }, []);
 
   useEffect(() => {
-    return pomodoroActions.init({
-      onPhaseDeadlineCrossed: (completed) => {
-        const introEl = introAudioRef.current;
-        const mainEl = mainAudioRef.current;
-        if (introEl) {
-          introEl.pause();
-          introEl.currentTime = 0;
-        }
-        if (mainEl) {
-          mainEl.currentTime = 0;
-          void mainEl.play().catch((err: unknown) => {
-            log.error("pomodoro: failed to play main chime loop", err);
-          });
-        }
-        phaseCompleteNotification(completed);
-      },
-    });
-  }, []);
-
-  const phase = useCurrentPhase();
-  const running = useIsRunning();
-  const paused = useIsPaused();
-  const secondsRemaining = useSecondsRemaining();
-  const runStartedAt = useActivePhaseRunStartedAt();
-  const deadlineCrossed = useActivePhaseDeadlineCrossed();
-  const midnightContinuation = useActivePhaseMidnightContinuation();
-
-  useEffect(() => {
     if (runStartedAt == null) {
       introPlayedForRunStartedAtRef.current = null;
     }
@@ -361,74 +367,59 @@ function usePomodoroMechanics(): [PomodoroPhase, boolean, boolean] {
   }, [running, paused, runStartedAt, secondsRemaining, midnightContinuation]);
 
   useEffect(() => {
-    if (deadlineCrossed) return;
     const mainEl = mainAudioRef.current;
     if (!mainEl) return;
-    mainEl.pause();
-    mainEl.currentTime = 0;
+    const justCrossed = deadlineCrossed && !prevDeadlineCrossedRef.current;
+    prevDeadlineCrossedRef.current = deadlineCrossed;
+    if (justCrossed) {
+      const introEl = introAudioRef.current;
+      if (introEl) {
+        introEl.pause();
+        introEl.currentTime = 0;
+      }
+      mainEl.currentTime = 0;
+      void mainEl.play().catch((err: unknown) => {
+        log.error("pomodoro: failed to play main chime loop", err);
+      });
+    } else if (!deadlineCrossed) {
+      mainEl.pause();
+      mainEl.currentTime = 0;
+    }
   }, [deadlineCrossed]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    void Notification.requestPermission?.();
-  }, []);
-
-  return [phase, running, paused];
 }
 
-/** Keep in sync with `POMODORO_TIMER_INTERVAL_MS` in `app/_stores/pomodoroStore.ts`. */
-const POMODORO_TICK_MS = 1000;
-/** Consecutive interval fires later than this vs an ideal tick count toward pausing. */
-const TICK_DRIFT_THRESHOLD_MS = 500;
-/** Consecutive interval fires later than this vs an ideal tick count toward pausing. */
-const PAUSE_STREAK_THRESHOLD = 3;
-
-function usePauseOnTimeDrift(): void {
-  // Drift detection uses setTimeout instead of setInterval because the system seems
-  // to prioritise timers created before the lid was closed.
+function usePausePomodoroOnAudioPause(): void {
+  // Browsers stop all audio playback when the laptop lid is closed (and in some
+  // similar suspend-like situations). We piggy-back on that by looping a silent
+  // track for the duration of an active phase: if the audio gets paused while
+  // the phase is still supposed to be running, we treat it as a signal to pause
+  // the pomodoro session too.
+  // This approach might generate some false positives but testing suggests that
+  // much less than other tried solutions which were based on detecing time drift.
   const running = useIsRunning();
   const paused = useIsPaused();
-  const streakRef = useRef(0);
-  const lastTickRef = useRef(0);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!running || paused) {
-      streakRef.current = 0;
-      return;
-    }
+    if (!running || paused) return;
 
-    streakRef.current = 0;
-    lastTickRef.current = performance.now();
+    const audio = new Audio(POMODORO_SILENCE_MP3);
+    audio.loop = true;
+    audio.preload = "auto";
 
-    let timeoutId: number | undefined;
-
-    const tick = (): void => {
-      const now = performance.now();
-      const delta = now - lastTickRef.current;
-      lastTickRef.current = now;
-
-      if (delta > POMODORO_TICK_MS + TICK_DRIFT_THRESHOLD_MS) {
-        streakRef.current += 1;
-        console.log("streak", streakRef.current);
-        if (streakRef.current >= PAUSE_STREAK_THRESHOLD) {
-          streakRef.current = 0;
-          pomodoroActions.pause();
-          console.log("pausing");
-          return;
-        }
-      } else {
-        streakRef.current = 0;
-        console.log("resetting streak");
-      }
-
-      timeoutId = window.setTimeout(tick, POMODORO_TICK_MS) as number;
+    const onAudioPause = (): void => {
+      pomodoroActions.pause();
     };
+    audio.addEventListener("pause", onAudioPause);
 
-    timeoutId = window.setTimeout(tick, POMODORO_TICK_MS) as number;
+    void audio.play().catch((err: unknown) => {
+      log.error("pomodoro: failed to play silence loop", err);
+    });
 
     return () => {
-      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+      audio.removeEventListener("pause", onAudioPause);
+      audio.pause();
+      audio.src = "";
     };
   }, [running, paused]);
 }
