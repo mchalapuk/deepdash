@@ -285,6 +285,7 @@ function useLiveNowMs(enabled: boolean): number {
     typeof window !== "undefined" ? Date.now() : 0,
   );
   useLayoutEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNow(Date.now());
     if (!enabled) return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);

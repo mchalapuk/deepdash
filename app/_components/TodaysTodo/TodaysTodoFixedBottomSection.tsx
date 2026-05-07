@@ -108,6 +108,7 @@ function useTodaysTodoStickyBacklogLabel({
   useEffect(() => {
     const vp = viewportRef.current;
     const header = backlogSectionRef.current;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     recompute();
     if (!vp || !header) return;
     vp.addEventListener("scroll", recompute, { passive: true });
@@ -129,6 +130,7 @@ function useTodaysTodoStickyBacklogLabel({
   ]);
 
   useLayoutEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     recompute();
   }, [
     recompute,

@@ -6,7 +6,6 @@ import {
   migrateLegacyPersistKeysOnce,
   POMODORO_CONFIG_KEY,
   TODO_DAY_STORAGE_KEY_PREFIX,
-  WORLD_CLOCK_STORAGE_KEY,
 } from "@/lib/persistKeys";
 
 describe("migrateLegacyPersistKeysOnce", () => {
@@ -16,14 +15,11 @@ describe("migrateLegacyPersistKeysOnce", () => {
   });
 
   it("copies fixed legacy keys into deepdash keys and removes legacy entries", () => {
-    localStorage.setItem("worktools.worldClocks.v1", "[1]");
     localStorage.setItem("worktools.calculator.v1", "{}");
 
     migrateLegacyPersistKeysOnce();
 
-    expect(localStorage.getItem(WORLD_CLOCK_STORAGE_KEY)).toBe("[1]");
     expect(localStorage.getItem(CALCULATOR_STORAGE_KEY)).toBe("{}");
-    expect(localStorage.getItem("worktools.worldClocks.v1")).toBeNull();
     expect(localStorage.getItem("worktools.calculator.v1")).toBeNull();
   });
 

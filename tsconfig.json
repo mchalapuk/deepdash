@@ -24,7 +24,6 @@
   },
   "include": [
     "next-env.d.ts",
-    "types/tz-lookup.d.ts",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",

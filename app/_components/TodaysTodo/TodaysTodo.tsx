@@ -573,6 +573,7 @@ function useTodaysTodoBacklogEndSpacer({
 
   useLayoutEffect(() => {
     if (!hydrated) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setBacklogEndSpacerPx(0);
       return;
     }
@@ -636,6 +637,7 @@ function useTodaysTodoTrailingTargetFromScroll({
 
   useEffect(() => {
     const vp = viewportRef.current;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     updateTrailingTargetFromScroll();
     if (!vp) return;
     vp.addEventListener("scroll", updateTrailingTargetFromScroll, {
@@ -650,6 +652,7 @@ function useTodaysTodoTrailingTargetFromScroll({
   }, [viewportRef, updateTrailingTargetFromScroll]);
 
   useLayoutEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     updateTrailingTargetFromScroll();
   }, [
     updateTrailingTargetFromScroll,
@@ -659,6 +662,7 @@ function useTodaysTodoTrailingTargetFromScroll({
   ]);
 
   useLayoutEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     updateTrailingTargetFromScroll();
   }, [backlogEndSpacerPx, updateTrailingTargetFromScroll]);
 

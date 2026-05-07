@@ -3,7 +3,6 @@
 import { calculatorActions } from "@/app/_stores/calculatorStore";
 import { pomodoroActions } from "@/app/_stores/pomodoroStore";
 import { todoActions } from "@/app/_stores/todoStore";
-import { worldClockActions } from "@/app/_stores/worldClockStore";
 import exportV1Fixture from "../__fixtures__/export-v1.json";
 import todoSliceV1Fixture from "../__fixtures__/todo-slice-v1.json";
 import todoSliceV2PerDayBacklogFixture from "../__fixtures__/todo-slice-v2-perday-backlog.json";
@@ -28,7 +27,6 @@ function expectMigratedBundle(raw: unknown): DeepdashExportLatest {
   return {
     version: CURRENT_DEEPDASH_EXPORT_VERSION,
     exportedAt: r.exportedAt,
-    worldClock: r.worldClock,
     pomodoro: r.pomodoro,
     todo: r.todo,
     calculator: r.calculator,
@@ -42,10 +40,6 @@ describe("dataExport migrations", () => {
     const expected: DeepdashExportLatest = {
       version: CURRENT_DEEPDASH_EXPORT_VERSION,
       exportedAt: "2026-04-01T12:00:00.000Z",
-      worldClock: {
-        version: 1,
-        clocks: [{ id: "clock-a", timeZone: "Europe/Warsaw", label: "Home" }],
-      },
       pomodoro: {
         version: 1,
         config: {
@@ -106,10 +100,6 @@ describe("dataExport migrations", () => {
     };
 
     const result = expectMigratedBundle(legacy);
-    expect(result.worldClock).toEqual({
-      version: 1,
-      clocks: [{ id: "x", timeZone: "UTC", label: "" }],
-    });
     expect(result.todo).toEqual({
       version: 3,
       todosByDay: {},
@@ -140,19 +130,16 @@ describe("dataExport migrations", () => {
     const r = tryMigrateDeepdashBundle({
       version: 1,
       exportedAt: "2026-01-01T00:00:00.000Z",
-      worldClock: { version: 99, clocks: [] },
       pomodoro: { version: 1, config: {}, logs: { days: {} } },
       todo: { version: 3, todosByDay: {}, backlogItems: [] },
       calculator: { version: 99, expression: "", history: [] },
     });
     expect(r.ok).toBe(false);
     if (!r.ok) {
-      expect(r.errors.length).toBe(2);
+      expect(r.errors.length).toBe(1);
       const mods = r.errors.map((e) => e.module);
-      expect(mods).toContain("worldClock");
       expect(mods).toContain("calculator");
       const text = formatDeepdashImportErrorsForUser(r.errors);
-      expect(text).toContain("worldClock");
       expect(text).toContain("calculator");
     }
   });
@@ -170,13 +157,11 @@ describe("dataExport migrations", () => {
     const result = expectMigratedBundle({
       version: 1,
       exportedAt: "",
-      worldClock: { version: 1, clocks: [] },
       pomodoro: { version: 1, config: {}, logs: {} },
       todo: { version: 1, todosByDay: {} },
       calculator: { version: 1, expression: "", history: [] },
     });
 
-    expect(result.worldClock.clocks).toEqual([]);
     expect(result.pomodoro.logs).toEqual({ days: {} });
     expect(result.pomodoro.config.workDurationMs).toBe(25 * 60 * 1000);
     expect(result.calculator).toMatchObject({ expression: "", history: [] });
@@ -255,10 +240,6 @@ describe("applyDeepdashImportWithRollback", () => {
     const seed: DeepdashExportLatest = {
       version: CURRENT_DEEPDASH_EXPORT_VERSION,
       exportedAt: "2020-01-01T00:00:00.000Z",
-      worldClock: {
-        version: 1,
-        clocks: [{ id: "seed-clock", timeZone: "UTC", label: "seed" }],
-      },
       pomodoro: {
         version: 1,
         config: {
@@ -274,13 +255,8 @@ describe("applyDeepdashImportWithRollback", () => {
 
     const incoming: DeepdashExportLatest = {
       ...seed,
-      worldClock: {
-        version: 1,
-        clocks: [{ id: "incoming-clock", timeZone: "Europe/Berlin", label: "incoming" }],
-      },
     };
 
-    worldClockActions.importData(seed.worldClock);
     await pomodoroActions.importData(seed.pomodoro);
     await todoActions.importData(seed.todo);
     calculatorActions.importData(seed.calculator);
@@ -301,7 +277,6 @@ describe("applyDeepdashImportWithRollback", () => {
       });
     }
 
-    expect(worldClockActions.exportData()).toEqual(seed.worldClock);
     expect(calculatorActions.exportData().expression).toBe("seed");
   });
 });

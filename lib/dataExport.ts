@@ -14,20 +14,14 @@ import {
   todoActions,
   type TodoExportV3,
 } from "@/app/_stores/todoStore";
-import {
-  migrateWorldClockSliceToLatest,
-  worldClockActions,
-  type WorldClockExportV1,
-} from "@/app/_stores/worldClockStore";
 import log from "@/lib/logger";
 
 /** Bump when the **bundle** layout changes (not necessarily every slice bump). */
-export const CURRENT_DEEPDASH_EXPORT_VERSION = 1 as const;
+export const CURRENT_DEEPDASH_EXPORT_VERSION = 2 as const;
 
 export type DeepdashExportLatest = {
   version: typeof CURRENT_DEEPDASH_EXPORT_VERSION;
   exportedAt: string;
-  worldClock: WorldClockExportV1;
   pomodoro: PomodoroExportV1;
   todo: TodoExportV3;
   calculator: CalculatorExportV1;
@@ -42,7 +36,6 @@ export async function collectDeepdashExport(): Promise<DeepdashExportLatest> {
   return {
     version: CURRENT_DEEPDASH_EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
-    worldClock: worldClockActions.exportData(),
     pomodoro: await pomodoroActions.exportData(),
     todo: await todoActions.exportData(),
     calculator: calculatorActions.exportData(),
@@ -76,7 +69,7 @@ export type DeepdashImportError = {
   message: string;
 };
 
-export type DeepdashImportModuleId = "worldClock" | "pomodoro" | "todo" | "calculator";
+export type DeepdashImportModuleId = "pomodoro" | "todo" | "calculator";
 export type DeepdashImportErrorPhase = "bundle" | "migration" | "import" | "rollback" | "backup";
 
 /**
@@ -105,7 +98,6 @@ export async function runDeepdashJsonImportFromText(text: string): Promise<Deepd
   const latest: DeepdashExportLatest = {
     version: CURRENT_DEEPDASH_EXPORT_VERSION,
     exportedAt: mig.exportedAt,
-    worldClock: mig.worldClock,
     pomodoro: mig.pomodoro,
     todo: mig.todo,
     calculator: mig.calculator,
@@ -122,7 +114,6 @@ export type TryMigrateDeepdashBundleResult =
   | {
       ok: true;
       exportedAt: string;
-      worldClock: WorldClockExportV1;
       pomodoro: PomodoroExportV1;
       todo: TodoExportV3;
       calculator: CalculatorExportV1;
@@ -141,16 +132,14 @@ export function tryMigrateDeepdashBundle(raw: unknown): TryMigrateDeepdashBundle
   }
 
   const r = raw as Record<string, unknown>;
-  const { exportedAt, worldClockPayload, pomodoroPayload, todoPayload, calculatorPayload } =
+  const { exportedAt, pomodoroPayload, todoPayload, calculatorPayload } =
     extractSlicePayloads(r);
 
   log.debug("deepdash migration phase: slice payloads prepared", {
     exportedAt,
-    worldClockKind: Array.isArray(worldClockPayload) ? "array" : typeof worldClockPayload,
   });
 
   const errors: DeepdashImportError[] = [];
-  let worldClock: WorldClockExportV1 | undefined;
   let pomodoro: PomodoroExportV1 | undefined;
   let todo: TodoExportV3 | undefined;
   let calculator: CalculatorExportV1 | undefined;
@@ -165,9 +154,6 @@ export function tryMigrateDeepdashBundle(raw: unknown): TryMigrateDeepdashBundle
     }
   };
 
-  trySlice("worldClock", () => {
-    worldClock = migrateWorldClockSliceToLatest(worldClockPayload);
-  });
   trySlice("pomodoro", () => {
     pomodoro = migratePomodoroSliceToLatest(pomodoroPayload);
   });
@@ -190,7 +176,6 @@ export function tryMigrateDeepdashBundle(raw: unknown): TryMigrateDeepdashBundle
   return {
     ok: true,
     exportedAt,
-    worldClock: worldClock!,
     pomodoro: pomodoro!,
     todo: todo!,
     calculator: calculator!,
@@ -216,7 +201,6 @@ async function applyDeepdashImport(data: DeepdashExportLatest): Promise<void> {
   if (typeof localStorage === "undefined") {
     throw new Error("Import is only available in the browser.");
   }
-  worldClockActions.importData(data.worldClock);
   await pomodoroActions.importData(data.pomodoro);
   await todoActions.importData(data.todo);
   calculatorActions.importData(data.calculator);
@@ -251,7 +235,6 @@ export async function applyDeepdashImportWithRollback(
   }
 
   const steps: { module: DeepdashImportModuleId; run: () => Promise<void> }[] = [
-    { module: "worldClock", run: async () => worldClockActions.importData(data.worldClock) },
     { module: "pomodoro", run: async () => pomodoroActions.importData(data.pomodoro) },
     { module: "todo", run: async () => todoActions.importData(data.todo) },
     { module: "calculator", run: async () => calculatorActions.importData(data.calculator) },
@@ -307,7 +290,7 @@ function bundleValidationErrors(raw: unknown): DeepdashImportError[] | null {
     return [{ phase: "bundle", message: "Import file is not a JSON object." }];
   }
   const bundleVersion = raw.version;
-  if (bundleVersion !== CURRENT_DEEPDASH_EXPORT_VERSION) {
+  if (bundleVersion !== 1 && bundleVersion !== CURRENT_DEEPDASH_EXPORT_VERSION) {
     return [
       {
         phase: "bundle",
@@ -323,7 +306,6 @@ function bundleValidationErrors(raw: unknown): DeepdashImportError[] | null {
 
 function extractSlicePayloads(raw: Record<string, unknown>): {
   exportedAt: string;
-  worldClockPayload: unknown;
   pomodoroPayload: unknown;
   todoPayload: unknown;
   calculatorPayload: unknown;
@@ -332,13 +314,6 @@ function extractSlicePayloads(raw: Record<string, unknown>): {
     typeof raw.exportedAt === "string" && raw.exportedAt.length > 0
       ? raw.exportedAt
       : new Date(0).toISOString();
-
-  const worldClockPayload =
-    raw.worldClock != null
-      ? raw.worldClock
-      : raw.worldClocks != null
-        ? raw.worldClocks
-        : { version: 1, clocks: [] };
 
   const pomodoroPayload = raw.pomodoro != null ? raw.pomodoro : {};
 
@@ -353,7 +328,6 @@ function extractSlicePayloads(raw: Record<string, unknown>): {
 
   return {
     exportedAt,
-    worldClockPayload,
     pomodoroPayload,
     todoPayload,
     calculatorPayload,

@@ -1,6 +1,5 @@
 /** Single source of truth for `localStorage` keys used by feature stores and import/export. */
 
-export const WORLD_CLOCK_STORAGE_KEY = "deepdash.worldClocks.v1";
 export const POMODORO_CONFIG_KEY = "deepdash.pomodoro.config.v1";
 /** In-flight timer session (JSON). Cleared when idle. */
 export const POMODORO_ACTIVE_SESSION_KEY = "deepdash.pomodoro.activeSession.v1";
@@ -42,7 +41,6 @@ export function migrateLegacyPersistKeysOnce(): void {
       ls.removeItem(oldKey);
     };
 
-    migratePair("worktools.worldClocks.v1", WORLD_CLOCK_STORAGE_KEY);
     migratePair("worktools.pomodoro.config.v1", POMODORO_CONFIG_KEY);
     migratePair("worktools.pomodoro.activeSession.v1", POMODORO_ACTIVE_SESSION_KEY);
     migratePair("worktools.pomodoro.logs.v1", POMODORO_LOGS_KEY);

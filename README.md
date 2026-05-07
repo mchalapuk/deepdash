@@ -6,7 +6,6 @@
 
 ## Features
 
-- **World clocks** — Configurable analog clocks with IANA time zones and labels.
 - **Pomodoro** — Work / short break / long break with configurable durations, daily work-time tracking, phase-colored backdrop, optional chime and desktop notifications.
 - **Work Log** — Log of each pomodoro session and pauses in them; Total workd time calculation.
 - **Calculator** — Single expression field; normalized parse and numeric result (evaluated on enter). Calculation history of 200 entries.
@@ -28,7 +27,6 @@ A restrictive CSP is intended to block cross-origin scripts, styles, fonts, and 
 - **State:** **Valtio** (feature-scoped stores)
 - **Logging:** **loglevel** (quiet by default)
 - **Math:** **mathjs**
-- **Clocks:** **react-clock**
 - **Timer digits:** **@pqina/flip**
 - **Tests:** **Jest** (+ **@swc/jest** / **ts-jest** as configured in the repo)
 

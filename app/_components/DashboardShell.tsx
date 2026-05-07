@@ -6,11 +6,11 @@ import { Calculator } from "./Calculator";
 import { Pomodoro } from "./Pomodoro";
 import { TodaysTodo } from "./TodaysTodo";
 import { TodaysWork } from "./TodaysWork";
-import { WorldClocks } from "./WorldClocks";
+import { Logo } from "./Logo";
 
 export function DashboardShell() {
   const bodyColStyle = {
-    height: "calc(100vh - 219px)",
+    height: "calc(100vh - 80px)",
     minHeight: 0,
   } as const;
 
@@ -26,10 +26,10 @@ export function DashboardShell() {
       style={{ overflow: "hidden" }}
     >
       <Grid columns={12} columnGap="xl" rowGap={0}>
-        <GridCol span={12}>
-          <Box pt={42} pb={4}>
-            <WorldClocks />
-          </Box>
+        <GridCol span={6}>
+          <a href="http://deepda.sh/"><Logo className="-ml-5 -mb-8 -mt-1" /></a>
+        </GridCol>
+        <GridCol span={6}>
         </GridCol>
         <GridCol span={5} style={bodyColStyle}>
           <Stack
