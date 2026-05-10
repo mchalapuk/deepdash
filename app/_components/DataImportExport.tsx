@@ -31,8 +31,8 @@ export function DataImportExport() {
       />
       <Box
         pos="fixed"
-        bottom={54}
-        right={28}
+        bottom={38}
+        right={32}
         style={{ zIndex: 200 }}
         aria-label="Export and import app data"
       >

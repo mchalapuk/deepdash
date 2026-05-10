@@ -1,8 +1,7 @@
 "use client";
 
-import { Box, Container, Grid, GridCol, Stack } from "@mantine/core";
+import { Box, Container, Grid, GridCol, Stack, Group } from "@mantine/core";
 
-import { Calculator } from "./Calculator";
 import { Pomodoro } from "./Pomodoro";
 import { TodaysTodo } from "./TodaysTodo";
 import { TodaysWork } from "./TodaysWork";
@@ -10,7 +9,8 @@ import { Logo } from "./Logo";
 
 export function DashboardShell() {
   const bodyColStyle = {
-    height: "calc(100vh - 80px)",
+    height: "calc(100dvh - 96px)",
+    width: "100%",
     minHeight: 0,
   } as const;
 
@@ -18,54 +18,35 @@ export function DashboardShell() {
     <Container
       component="main"
       id="main-content"
-      size="xl"
+      size="872px"
       py={0}
       px={0}
       aria-label="Productivity tools"
       h="100vh"
       style={{ overflow: "hidden" }}
     >
-      <Grid columns={12} columnGap="xl" rowGap={0}>
-        <GridCol span={6}>
-          <a href="http://deepda.sh/"><Logo className="-ml-5 -mb-8 -mt-1" /></a>
-        </GridCol>
-        <GridCol span={6}>
-        </GridCol>
-        <GridCol span={5} style={bodyColStyle}>
+      <Stack gap={0} align="start">
+        <a href="http://deepda.sh/" className="block w-min-content">
+          <Logo className="-ml-5 -mb-8 -mt-1" />
+        </a>
+        <Group gap={20} style={bodyColStyle}>
           <Stack
             gap={28}
+            w="542px"
             h="100%"
-            pb={26}
             className="min-h-0"
             style={{ overflow: "hidden" }}
           >
-            <Box style={{ flexShrink: 0 }} pt={28}>
+            <Box style={{ flexShrink: 0 }} pt={28} pr={18}>
               <Pomodoro />
             </Box>
-            <Box
-              style={{
-                flex: 1,
-                minHeight: 0,
-                minWidth: 0,
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <Calculator />
-            </Box>
-          </Stack>
-        </GridCol>
-        <GridCol span={4} style={bodyColStyle}>
-          <Box h="100%" className="min-h-0" pb={36} style={{ overflow: "hidden" }}>
             <TodaysWork />
-          </Box>
-        </GridCol>
-        <GridCol component="aside" span={3} style={bodyColStyle}>
-          <Box h="100%" className="min-h-0" pb={43} style={{ overflow: "hidden" }}>
+          </Stack>
+          <Box h="100%" className="min-h-0" style={{ overflow: "hidden", flexGrow: 1 }}>
             <TodaysTodo />
           </Box>
-        </GridCol>
-      </Grid>
+        </Group>
+      </Stack>
     </Container>
   );
 }

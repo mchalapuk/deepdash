@@ -25,7 +25,6 @@ import {
 } from "@/app/_stores/todoStore";
 import log from "@/lib/logger";
 
-import { clampColumn } from "./todoRowHelpers";
 import { TodoPersistedRow } from "./TodoPersistedRow";
 import { TodaysTodoSectionTitle } from "./TodaysTodoSectionTitle";
 import { TaskListTitle } from "./TaskListTitle";
@@ -222,7 +221,7 @@ export function TodaysTodo() {
           </Stack>
         )}
       </ScrollArea>
-      <Box style={{ flexShrink: 0 }}>
+      <Box style={{ flexShrink: 0 }} pt={12}>
         <TodoTrailingRow
           draftAPI={draftAPI}
           lastItem={lastItemForTrailingKeyboardNav}

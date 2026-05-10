@@ -6,7 +6,6 @@ import {
 } from "@/lib/dataExport";
 import log from "@/lib/logger";
 import {
-  CALCULATOR_STORAGE_KEY,
   FIRST_RUN_SEED_HANDLED_KEY,
   migrateLegacyPersistKeysOnce,
   POMODORO_CONFIG_KEY,
@@ -39,7 +38,7 @@ export function buildFirstRunSeedBundle(): DeepdashExportLatest {
         [day]: {
           items: [
             { id: "seed-todo-1", text: "Star DeepDash on Github", done: false },
-            { id: "seed-todo-2", text: "Play with the calculator", done: false },
+            { id: "seed-todo-2", text: "Try import/export in Settings", done: false },
             { id: "seed-todo-3", text: "Add tasks to this list", done: false },
             { id: "seed-todo-4", text: "Start working using Pomodoro", done: false },
             { id: "seed-todo-5", text: "Clear your inbox", done: false },
@@ -71,40 +70,13 @@ export function buildFirstRunSeedBundle(): DeepdashExportLatest {
         },
       ],
     },
-    calculator: {
-      version: 1,
-      expression: "",
-      history: [
-        { id: "seed-calc-h01", normalized: "gcd(84, 30)", result: "6" },
-        { id: "seed-calc-h02", normalized: "abs(-2025)", result: "2025" },
-        { id: "seed-calc-h03", normalized: "365 / 7", result: "52.142857142857" },
-        { id: "seed-calc-h04", normalized: "(1 + sqrt(5)) / 2", result: "1.6180339887499" },
-        { id: "seed-calc-h05", normalized: "log(1000, 10)", result: "3" },
-        { id: "seed-calc-h06", normalized: "sin(pi / 2)", result: "1" },
-        { id: "seed-calc-h07", normalized: "factorial(12)", result: "4.790016e+8" },
-        { id: "seed-calc-h08", normalized: "2 * pi", result: "6.2831853071796" },
-        { id: "seed-calc-h09", normalized: "sqrt(2)", result: "1.4142135623731" },
-        { id: "seed-calc-h10", normalized: "2 ^ 10", result: "1024" },
-        { id: "seed-calc-h11", normalized: "12 * 9", result: "108" },
-        { id: "seed-calc-h12", normalized: "100 - 17", result: "83" },
-        { id: "seed-calc-h13", normalized: "round(3.1415926, 3)", result: "3.142" },
-        { id: "seed-calc-h14", normalized: "floor(19.99)", result: "19" },
-        { id: "seed-calc-h15", normalized: "ceil(19.01)", result: "20" },
-        { id: "seed-calc-h16", normalized: "sqrt(144)", result: "12" },
-        { id: "seed-calc-h17", normalized: "2^16", result: "65536" },
-        { id: "seed-calc-h18", normalized: "(45 + 30 + 25) / 3", result: "33.333333333333336" },
-        { id: "seed-calc-h19", normalized: "10%", result: "0.1" },
-        { id: "seed-calc-h20", normalized: "min(3, 7, -2)", result: "-2" },
-      ],
-    },
   };
 }
 
 function hasAnyPersistedDeepdashData(): boolean {
   return (
     localStorage.getItem(POMODORO_CONFIG_KEY) != null ||
-    localStorage.getItem(TODO_BACKLOG_STORAGE_KEY) != null ||
-    localStorage.getItem(CALCULATOR_STORAGE_KEY) != null
+    localStorage.getItem(TODO_BACKLOG_STORAGE_KEY) != null
   );
 }
 

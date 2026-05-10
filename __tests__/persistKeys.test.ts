@@ -2,7 +2,6 @@
 
 import {
   __resetLegacyPersistMigrationForTests,
-  CALCULATOR_STORAGE_KEY,
   migrateLegacyPersistKeysOnce,
   POMODORO_CONFIG_KEY,
   TODO_DAY_STORAGE_KEY_PREFIX,
@@ -14,13 +13,14 @@ describe("migrateLegacyPersistKeysOnce", () => {
     localStorage.clear();
   });
 
-  it("copies fixed legacy keys into deepdash keys and removes legacy entries", () => {
+  it("removes obsolete calculator storage keys", () => {
     localStorage.setItem("worktools.calculator.v1", "{}");
+    localStorage.setItem("deepdash.calculator.v1", "{}");
 
     migrateLegacyPersistKeysOnce();
 
-    expect(localStorage.getItem(CALCULATOR_STORAGE_KEY)).toBe("{}");
     expect(localStorage.getItem("worktools.calculator.v1")).toBeNull();
+    expect(localStorage.getItem("deepdash.calculator.v1")).toBeNull();
   });
 
   it("does not overwrite an existing deepdash key", () => {
@@ -45,12 +45,12 @@ describe("migrateLegacyPersistKeysOnce", () => {
   });
 
   it("runs only once until reset", () => {
-    localStorage.setItem("worktools.calculator.v1", "first");
+    localStorage.setItem("worktools.pomodoro.config.v1", "first");
     migrateLegacyPersistKeysOnce();
-    localStorage.setItem("worktools.calculator.v1", "second");
+    localStorage.setItem("worktools.pomodoro.config.v1", "second");
     migrateLegacyPersistKeysOnce();
 
-    expect(localStorage.getItem(CALCULATOR_STORAGE_KEY)).toBe("first");
-    expect(localStorage.getItem("worktools.calculator.v1")).toBe("second");
+    expect(localStorage.getItem(POMODORO_CONFIG_KEY)).toBe("first");
+    expect(localStorage.getItem("worktools.pomodoro.config.v1")).toBe("second");
   });
 });

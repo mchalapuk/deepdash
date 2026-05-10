@@ -41,19 +41,19 @@ export function TodoTrailingRow({
   });
 
   return (
-    <Group wrap="nowrap" gap={5.5} align="flex-start" w="100%" pos="relative">
+    <Group wrap="nowrap" gap={0} align="flex-start" w="100%" pos="relative" mb={7}>
       <ActionIcon
-        variant="light"
+        variant="subtle"
         color={color}
         opacity={0.95}
-        size="sm"
+        size="xs"
         aria-label="Add task"
         radius="sm"
         onClick={onAddButtonClick}
         style={{
           position: "absolute",
-          bottom: "5px",
-          left: "3px",
+          bottom: "6px",
+          left: "5px",
         }}
       >
         <IconPlus size={12} stroke={3} />

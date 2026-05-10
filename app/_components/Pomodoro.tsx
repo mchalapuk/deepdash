@@ -136,7 +136,7 @@ function Countdown({ running }: { running: boolean }) {
         className="flex justify-center"
       >
         {showSteppers ? (
-          <Stack gap={2} align="center" ml="-3.5rem">
+          <Stack gap={2} align="center" ml="-3.6rem">
             <Tooltip
               label={addMinuteLabel}
               position="right"

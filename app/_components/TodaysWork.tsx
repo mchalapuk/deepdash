@@ -48,19 +48,18 @@ export function TodaysWork() {
   }, [activePhaseRun?.phase, activePhaseRun?.phaseStartedAtMs]);
 
   return (
-    <Stack gap={0} h="100%" style={{ minHeight: 0, overflow: "hidden" }}>
+    <Stack gap={16} h="100%" w="100%" style={{ minHeight: 0, overflow: "hidden" }}>
       <Stack gap={12} style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-        <Group w="100%" wrap="nowrap" pl={12} pr={30} style={{ flexShrink: 0 }}>
-          <Text size="xs" c="dimmed" w="20%" miw="60px">
-            Session
-          </Text>
-          <Text size="xs" c="dimmed" style={{ flexGrow: 1, whiteSpace: "nowrap" }}>
-            Start - Stop
-          </Text>
-          <Text size="xs" c="dimmed" w="25%" miw="60px">
-            Duration
-          </Text>
-        </Group>
+        <Box pl={12} pr={30}>
+          <SessionRow
+            session="Session"
+            span="Start | Stop"
+            duration="Duration"
+            fontSize="xs"
+            color="dimmed"
+            component="div"
+          />
+        </Box>
         <ScrollArea
           viewportRef={workLogViewportRef}
           pr={18}
@@ -99,12 +98,24 @@ export function TodaysWork() {
         </ScrollArea>
       </Stack>
       <Box pr={18}>
-        <Paper w="100%" px={12} py={9} style={{ backgroundColor: "rgba(0, 0, 0, 0.9)", opacity: 0.78 }}>
-          <Group gap={4} style={{ flexShrink: 0 }} wrap="nowrap" align="end" pb={2}>
-            <Text size="sm" c="dimmed" w="73.5%" pb={1}>
-              Today&apos;s work time:
+        <Paper
+          w="100%"
+          pl={12}
+          pr={31}
+          pt={12}
+          pb={10}
+          style={{
+            backgroundColor: "transparent",
+            opacity: 0.74,
+          }}
+        >
+          <Group gap={4} wrap="nowrap" justify="space-between" pb={2}>
+            <Text size="sm" c="dimmed" opacity={0}>
+              Today&apos;s deep work:
             </Text>
-            <Text size="md">{hydrated ? formatDurationMs(totalMs): " "}</Text>
+            <Text size="sm" w="20.5%" c="dimmed">
+              {hydrated ? formatDurationMs(totalMs): " "}
+            </Text>
           </Group>
         </Paper>
       </Box>

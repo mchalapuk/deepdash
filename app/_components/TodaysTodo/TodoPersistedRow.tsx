@@ -121,8 +121,8 @@ export function TodoPersistedRow({
           minRows={1}
           autosize
           maxRows={12}
-          mt={-2}
-          mb={-4}
+          mt={-3}
+          mb={-3}
           value={text}
           onChange={onChange}
           onBlur={onBlurPersisted}
@@ -134,6 +134,7 @@ export function TodoPersistedRow({
               paddingTop: "2px",
               paddingBottom: "2px",
               lineHeight: 2.1,
+              overflow: "hidden",
               ...(done
                 ? {
                     textDecoration: "line-through",
@@ -153,42 +154,46 @@ export function TodoPersistedRow({
             marginTop: 4,
           }}
         > 
-          {!done && (
-            <Tooltip
-              label={moveLabel}
-              position="top-end"
-              offset={{ mainAxis: 7, alignmentAxis: -24 }}
-              withArrow
-              arrowOffset={34}
-              arrowSize={8}
-              events={{ hover: true, focus: true, touch: true }}
-              color="darker.7"
-              openDelay={500}
-              transitionProps={{ transition: 'fade-up', duration: 300 }}
+          <Tooltip
+            label={moveLabel}
+            position="top-end"
+            offset={{ mainAxis: 7, alignmentAxis: -24 }}
+            withArrow
+            arrowOffset={34}
+            arrowSize={8}
+            events={{ hover: true, focus: true, touch: true }}
+            color="darker.7"
+            openDelay={500}
+            transitionProps={{ transition: 'fade-up', duration: 300 }}
+            disabled={done}
+          >
+            <ActionIcon
+              variant="subtle"
+              color="white"
+              size="sm"
+              radius="sm"
+              aria-label={moveLabel}
+              onClick={() =>
+                listKind === "today"
+                  ? todoActions.moveItemToBacklog(id)
+                  : todoActions.moveItemToToday(id)
+              }
+              style={{
+                flexShrink: 0,
+                opacity: done ? 0 : 1,
+                pointerEvents: done ? "none" : "auto",
+              }}
+              onFocus={onIconFocus}
+              onBlur={onIconBlur}
+              disabled={done}
             >
-              <ActionIcon
-                variant="subtle"
-                color="white"
-                size="sm"
-                radius="sm"
-                aria-label={moveLabel}
-                onClick={() =>
-                  listKind === "today"
-                    ? todoActions.moveItemToBacklog(id)
-                    : todoActions.moveItemToToday(id)
-                }
-                style={{ flexShrink: 0 }}
-                onFocus={onIconFocus}
-                onBlur={onIconBlur}
-              >
-                {listKind === "today" ? (
-                  <IconArchive size={14} stroke={1} />
-                ) : (
-                  <IconCalendarPlus size={14} stroke={1} />
-                )}
-              </ActionIcon>
-            </Tooltip>
-          )}
+              {listKind === "today" ? (
+                <IconArchive size={14} stroke={1} />
+              ) : (
+                <IconCalendarPlus size={14} stroke={1} />
+              )}
+            </ActionIcon>
+          </Tooltip>
           <Tooltip
             label={reorderLabel}
             position="top-end"

@@ -12,7 +12,7 @@ describe("firstRunSeed bundle", () => {
     const day = localDayKey();
     expect(r.todo.todosByDay[day]?.items.map((i) => i.text)).toEqual([
       "Star DeepDash on Github",
-      "Play with the calculator",
+      "Try import/export in Settings",
       "Add tasks to this list",
       "Start working using Pomodoro",
       "Clear your inbox",
@@ -29,8 +29,5 @@ describe("firstRunSeed bundle", () => {
 
     expect(r.pomodoro.config.workDurationMs).toBe(25 * 60 * 1000);
     expect(r.pomodoro.logs.days).toEqual({});
-
-    expect(r.calculator.history).toHaveLength(20);
-    expect(r.calculator.expression).toBe("");
   });
 });

@@ -1,9 +1,9 @@
 /** @jest-environment jsdom */
 
-import { calculatorActions } from "@/app/_stores/calculatorStore";
 import { pomodoroActions } from "@/app/_stores/pomodoroStore";
 import { todoActions } from "@/app/_stores/todoStore";
 import exportV1Fixture from "../__fixtures__/export-v1.json";
+import exportV2Fixture from "../__fixtures__/export-v2.json";
 import todoSliceV1Fixture from "../__fixtures__/todo-slice-v1.json";
 import todoSliceV2PerDayBacklogFixture from "../__fixtures__/todo-slice-v2-perday-backlog.json";
 import {
@@ -29,7 +29,6 @@ function expectMigratedBundle(raw: unknown): DeepdashExportLatest {
     exportedAt: r.exportedAt,
     pomodoro: r.pomodoro,
     todo: r.todo,
-    calculator: r.calculator,
   };
 }
 
@@ -72,14 +71,20 @@ describe("dataExport migrations", () => {
         },
         backlogItems: [],
       },
-      calculator: {
-        version: 1,
-        expression: "2+2",
-        history: [{ id: "hist-1", normalized: "4", result: "4" }],
-      },
     };
 
     expect(result).toEqual(expected);
+  });
+
+  it("migrates v2 bundle (with removed calculator slice) to the current canonical bundle", () => {
+    const result = expectMigratedBundle(exportV2Fixture);
+
+    expect(result.version).toBe(CURRENT_DEEPDASH_EXPORT_VERSION);
+    expect(result.exportedAt).toBe("2026-05-01T12:00:00.000Z");
+    expect(result.pomodoro.config.workDurationMs).toBe(1_500_000);
+    expect(result.todo.todosByDay["2026-05-02"]?.items[0]?.text).toBe(
+      "Migrated from v2 export",
+    );
   });
 
   it("migrates legacy flat bundle v1 (pre–nested slices)", () => {
@@ -105,7 +110,6 @@ describe("dataExport migrations", () => {
       todosByDay: {},
       backlogItems: [],
     });
-    expect(result.calculator.expression).toBe("");
   });
 
   it("rejects unsupported bundle versions", () => {
@@ -130,17 +134,16 @@ describe("dataExport migrations", () => {
     const r = tryMigrateDeepdashBundle({
       version: 1,
       exportedAt: "2026-01-01T00:00:00.000Z",
-      pomodoro: { version: 1, config: {}, logs: { days: {} } },
+      pomodoro: { version: 99, config: {}, logs: { days: {} } },
       todo: { version: 3, todosByDay: {}, backlogItems: [] },
-      calculator: { version: 99, expression: "", history: [] },
     });
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.errors.length).toBe(1);
       const mods = r.errors.map((e) => e.module);
-      expect(mods).toContain("calculator");
+      expect(mods).toContain("pomodoro");
       const text = formatDeepdashImportErrorsForUser(r.errors);
-      expect(text).toContain("calculator");
+      expect(text).toContain("pomodoro");
     }
   });
 
@@ -159,12 +162,10 @@ describe("dataExport migrations", () => {
       exportedAt: "",
       pomodoro: { version: 1, config: {}, logs: {} },
       todo: { version: 1, todosByDay: {} },
-      calculator: { version: 1, expression: "", history: [] },
     });
 
     expect(result.pomodoro.logs).toEqual({ days: {} });
     expect(result.pomodoro.config.workDurationMs).toBe(25 * 60 * 1000);
-    expect(result.calculator).toMatchObject({ expression: "", history: [] });
     expect(result.todo).toEqual({
       version: 3,
       todosByDay: {},
@@ -249,8 +250,11 @@ describe("applyDeepdashImportWithRollback", () => {
         },
         logs: { days: {} },
       },
-      todo: { version: 3, todosByDay: {}, backlogItems: [] },
-      calculator: { version: 1, expression: "seed", history: [] },
+      todo: {
+        version: 3,
+        todosByDay: {},
+        backlogItems: [{ id: "seed-bl", text: "rollback-check", done: false }],
+      },
     };
 
     const incoming: DeepdashExportLatest = {
@@ -259,7 +263,6 @@ describe("applyDeepdashImportWithRollback", () => {
 
     await pomodoroActions.importData(seed.pomodoro);
     await todoActions.importData(seed.todo);
-    calculatorActions.importData(seed.calculator);
 
     jest.spyOn(pomodoroActions, "importData").mockImplementationOnce(() => {
       throw new Error("simulated pomodoro import failure");
@@ -277,6 +280,6 @@ describe("applyDeepdashImportWithRollback", () => {
       });
     }
 
-    expect(calculatorActions.exportData().expression).toBe("seed");
+    expect((await todoActions.exportData()).backlogItems).toEqual(seed.todo.backlogItems);
   });
 });

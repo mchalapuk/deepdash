@@ -7,7 +7,6 @@ export const POMODORO_LOGS_KEY = "deepdash.pomodoro.logs.v1";
 
 /** Set after legacy pomodoro work log JSON (`POMODORO_LOGS_KEY`) was migrated into IndexedDB. */
 export const POMODORO_IDB_LEGACY_MIGRATED_KEY = "deepdash.pomodoro.logs.idbLegacyMigrated.v1";
-export const CALCULATOR_STORAGE_KEY = "deepdash.calculator.v1";
 
 /** Per-calendar-day todo buckets: `{prefix}{YYYY-MM-DD}`. */
 export const TODO_DAY_STORAGE_KEY_PREFIX = "deepdash.todo.day.";
@@ -44,7 +43,13 @@ export function migrateLegacyPersistKeysOnce(): void {
     migratePair("worktools.pomodoro.config.v1", POMODORO_CONFIG_KEY);
     migratePair("worktools.pomodoro.activeSession.v1", POMODORO_ACTIVE_SESSION_KEY);
     migratePair("worktools.pomodoro.logs.v1", POMODORO_LOGS_KEY);
-    migratePair("worktools.calculator.v1", CALCULATOR_STORAGE_KEY);
+
+    try {
+      ls.removeItem("worktools.calculator.v1");
+      ls.removeItem("deepdash.calculator.v1");
+    } catch {
+      /* best effort */
+    }
 
     const legacyDayPrefix = "worktools.todo.day.";
     const legacyRolloverPrefix = "worktools.todo.autoRolloverFrom.";

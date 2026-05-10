@@ -1,9 +1,4 @@
 import {
-  calculatorActions,
-  type CalculatorExportV1,
-  migrateCalculatorSliceToLatest,
-} from "@/app/_stores/calculatorStore";
-import {
   migratePomodoroSliceToLatest,
   pomodoroActions,
   type PomodoroExportV1,
@@ -17,14 +12,13 @@ import {
 import log from "@/lib/logger";
 
 /** Bump when the **bundle** layout changes (not necessarily every slice bump). */
-export const CURRENT_DEEPDASH_EXPORT_VERSION = 2 as const;
+export const CURRENT_DEEPDASH_EXPORT_VERSION = 3 as const;
 
 export type DeepdashExportLatest = {
   version: typeof CURRENT_DEEPDASH_EXPORT_VERSION;
   exportedAt: string;
   pomodoro: PomodoroExportV1;
   todo: TodoExportV3;
-  calculator: CalculatorExportV1;
 };
 
 /** Builds the bundle from live stores / `localStorage` (browser only). */
@@ -38,7 +32,6 @@ export async function collectDeepdashExport(): Promise<DeepdashExportLatest> {
     exportedAt: new Date().toISOString(),
     pomodoro: await pomodoroActions.exportData(),
     todo: await todoActions.exportData(),
-    calculator: calculatorActions.exportData(),
   };
 }
 
@@ -69,7 +62,7 @@ export type DeepdashImportError = {
   message: string;
 };
 
-export type DeepdashImportModuleId = "pomodoro" | "todo" | "calculator";
+export type DeepdashImportModuleId = "pomodoro" | "todo";
 export type DeepdashImportErrorPhase = "bundle" | "migration" | "import" | "rollback" | "backup";
 
 /**
@@ -100,7 +93,6 @@ export async function runDeepdashJsonImportFromText(text: string): Promise<Deepd
     exportedAt: mig.exportedAt,
     pomodoro: mig.pomodoro,
     todo: mig.todo,
-    calculator: mig.calculator,
   };
 
   const applied = await applyDeepdashImportWithRollback(latest);
@@ -116,7 +108,6 @@ export type TryMigrateDeepdashBundleResult =
       exportedAt: string;
       pomodoro: PomodoroExportV1;
       todo: TodoExportV3;
-      calculator: CalculatorExportV1;
     }
   | { ok: false; errors: DeepdashImportError[] };
 
@@ -132,8 +123,7 @@ export function tryMigrateDeepdashBundle(raw: unknown): TryMigrateDeepdashBundle
   }
 
   const r = raw as Record<string, unknown>;
-  const { exportedAt, pomodoroPayload, todoPayload, calculatorPayload } =
-    extractSlicePayloads(r);
+  const { exportedAt, pomodoroPayload, todoPayload } = extractSlicePayloads(r);
 
   log.debug("deepdash migration phase: slice payloads prepared", {
     exportedAt,
@@ -142,7 +132,6 @@ export function tryMigrateDeepdashBundle(raw: unknown): TryMigrateDeepdashBundle
   const errors: DeepdashImportError[] = [];
   let pomodoro: PomodoroExportV1 | undefined;
   let todo: TodoExportV3 | undefined;
-  let calculator: CalculatorExportV1 | undefined;
 
   const trySlice = (module: DeepdashImportModuleId, fn: () => void): void => {
     try {
@@ -160,9 +149,6 @@ export function tryMigrateDeepdashBundle(raw: unknown): TryMigrateDeepdashBundle
   trySlice("todo", () => {
     todo = migrateTodoSliceToLatest(todoPayload);
   });
-  trySlice("calculator", () => {
-    calculator = migrateCalculatorSliceToLatest(calculatorPayload);
-  });
 
   if (errors.length > 0) {
     log.warn("deepdash migration phase: completed with errors", {
@@ -178,7 +164,6 @@ export function tryMigrateDeepdashBundle(raw: unknown): TryMigrateDeepdashBundle
     exportedAt,
     pomodoro: pomodoro!,
     todo: todo!,
-    calculator: calculator!,
   };
 }
 
@@ -203,7 +188,6 @@ async function applyDeepdashImport(data: DeepdashExportLatest): Promise<void> {
   }
   await pomodoroActions.importData(data.pomodoro);
   await todoActions.importData(data.todo);
-  calculatorActions.importData(data.calculator);
 }
 
 type ApplyDeepdashImportWithRollbackResult =
@@ -237,7 +221,6 @@ export async function applyDeepdashImportWithRollback(
   const steps: { module: DeepdashImportModuleId; run: () => Promise<void> }[] = [
     { module: "pomodoro", run: async () => pomodoroActions.importData(data.pomodoro) },
     { module: "todo", run: async () => todoActions.importData(data.todo) },
-    { module: "calculator", run: async () => calculatorActions.importData(data.calculator) },
   ];
 
   let importFailure: { module: DeepdashImportModuleId; message: string } | null = null;
@@ -290,7 +273,11 @@ function bundleValidationErrors(raw: unknown): DeepdashImportError[] | null {
     return [{ phase: "bundle", message: "Import file is not a JSON object." }];
   }
   const bundleVersion = raw.version;
-  if (bundleVersion !== 1 && bundleVersion !== CURRENT_DEEPDASH_EXPORT_VERSION) {
+  if (
+    typeof bundleVersion !== "number" ||
+    bundleVersion < 1 ||
+    bundleVersion > CURRENT_DEEPDASH_EXPORT_VERSION
+  ) {
     return [
       {
         phase: "bundle",
@@ -308,7 +295,6 @@ function extractSlicePayloads(raw: Record<string, unknown>): {
   exportedAt: string;
   pomodoroPayload: unknown;
   todoPayload: unknown;
-  calculatorPayload: unknown;
 } {
   const exportedAt =
     typeof raw.exportedAt === "string" && raw.exportedAt.length > 0
@@ -324,13 +310,10 @@ function extractSlicePayloads(raw: Record<string, unknown>): {
           todosByDay: raw.todosByDay ?? {},
         };
 
-  const calculatorPayload = raw.calculator != null ? raw.calculator : {};
-
   return {
     exportedAt,
     pomodoroPayload,
     todoPayload,
-    calculatorPayload,
   };
 }
 
