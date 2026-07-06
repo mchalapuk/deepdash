@@ -69,12 +69,6 @@ export function buildFirstRunSeedBundle(): DeepdashExportLatest {
         },
       ],
     },
-    tagColors: {
-      version: 1,
-      colors: {
-        community: "pink",
-      },
-    },
   };
 }
 

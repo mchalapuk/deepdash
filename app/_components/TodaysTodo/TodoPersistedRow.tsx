@@ -16,7 +16,6 @@ import {
 } from "@tabler/icons-react";
 import {
   useCallback,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -25,11 +24,6 @@ import {
   type KeyboardEvent,
 } from "react";
 
-import {
-  normalizeTagKey,
-  tagColorActions,
-  useTagColors,
-} from "@/app/_stores/tagColorStore";
 import {
   todoActions,
   type TodoItem,
@@ -266,18 +260,6 @@ function TodoRowTagOverlay({
   onClick: () => void;
 }) {
   const segments = useMemo(() => parseTodoTextSegments(text), [text]);
-  const tagValues = useMemo(
-    () => segments.filter((s) => s.kind === "tag").map((s) => s.value),
-    [segments],
-  );
-  const colors = useTagColors();
-
-  /** First time a `[tag]` appears anywhere, it gets a random color; later renders just read it back. */
-  useEffect(() => {
-    for (const value of tagValues) {
-      tagColorActions.ensureColor(value);
-    }
-  }, [tagValues]);
 
   return (
     <Box
@@ -313,7 +295,6 @@ function TodoRowTagOverlay({
             </span>
           );
         }
-        const color = colors[normalizeTagKey(segment.value)];
         return (
           <Pill
             key={i}
@@ -323,13 +304,9 @@ function TodoRowTagOverlay({
               display: "inline-flex",
               verticalAlign: "middle",
               color: "white",
-              opacity: .75,
+              opacity: .7,
               height: "20px",
-              ...(color
-                ? {
-                  backgroundColor: `var(--mantine-color-${color}-${color === "gray" ? 7 : 9})`,
-                  }
-                : {}),
+              backgroundColor: "var(--mantine-color-gray-7)",
             }}
           >
             {segment.value}

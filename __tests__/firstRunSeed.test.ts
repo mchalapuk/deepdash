@@ -28,6 +28,5 @@ describe("firstRunSeed bundle", () => {
 
     expect(r.pomodoro.config.workDurationMs).toBe(25 * 60 * 1000);
     expect(r.pomodoro.logs.days).toEqual({});
-    expect(r.tagColors.colors.community).toBe("pink");
   });
 });

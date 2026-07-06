@@ -1,0 +1,28 @@
+{
+  "version": 4,
+  "exportedAt": "2026-07-01T12:00:00.000Z",
+  "pomodoro": {
+    "version": 1,
+    "config": {
+      "workDurationMs": 1500000,
+      "shortBreakDurationMs": 300000,
+      "longBreakDurationMs": 900000
+    },
+    "logs": {
+      "days": {}
+    }
+  },
+  "todo": {
+    "version": 3,
+    "todosByDay": {
+      "2026-07-02": {
+        "items": [{ "id": "from-v4", "text": "Migrated from v4 export", "done": false }]
+      }
+    },
+    "backlogItems": []
+  },
+  "tagColors": {
+    "version": 1,
+    "colors": { "errand": "cyan" }
+  }
+}
