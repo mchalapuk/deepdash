@@ -5,6 +5,7 @@ import {
   Box,
   Checkbox,
   Group,
+  Pill,
   Textarea,
   Tooltip,
 } from "@mantine/core";
@@ -30,7 +31,7 @@ import {
 } from "@/app/_stores/todoStore";
 import log from "@/lib/logger";
 
-import { isSplitEnter } from "./todoRowHelpers";
+import { isSplitEnter, parseTodoTextSegments } from "./todoRowHelpers";
 import {
   isCaretOnFirstVisualLine,
   isCaretOnLastVisualLine,
@@ -114,37 +115,47 @@ export function TodoPersistedRow({
           onFocus={onIconFocus}
           onBlur={onIconBlur}
         />
-        <Textarea
-          ref={composeInputRef}
-          flex={1}
-          size="sm"
-          minRows={1}
-          autosize
-          maxRows={12}
-          mt={-3}
-          mb={-3}
-          value={text}
-          onChange={onChange}
-          onBlur={onBlurPersisted}
-          onKeyDown={onKeyDown}
-          variant="unstyled"
-          resize="none"
-          styles={{
-            input: {
-              paddingTop: "2px",
-              paddingBottom: "2px",
-              lineHeight: 2.1,
-              overflow: "hidden",
-              ...(done
-                ? {
-                    textDecoration: "line-through",
-                    opacity: 0.55,
-                  }
-                : {}
-              ),
-            },
-          }}
-        />
+        <Box pos="relative" flex={1} mt={-3} mb={-3}>
+          <Textarea
+            ref={composeInputRef}
+            w="100%"
+            size="sm"
+            minRows={1}
+            autosize
+            maxRows={12}
+            value={text}
+            onChange={onChange}
+            onBlur={onBlurPersisted}
+            onKeyDown={onKeyDown}
+            variant="unstyled"
+            resize="none"
+            styles={{
+              input: {
+                paddingTop: "2px",
+                paddingBottom: "2px",
+                lineHeight: 2.1,
+                overflow: "hidden",
+                ...(isFocused
+                  ? {}
+                  : { color: "transparent", caretColor: "transparent" }),
+                ...(done
+                  ? {
+                      textDecoration: "line-through",
+                      opacity: 0.55,
+                    }
+                  : {}
+                ),
+              },
+            }}
+          />
+          {isFocused ? null : (
+            <TodoRowTagOverlay
+              text={text}
+              done={done}
+              onClick={() => focusAPI.focusRow(id, text.length)}
+            />
+          )}
+        </Box>
         <Group
           wrap="nowrap"
           gap={2}
@@ -231,6 +242,57 @@ export function TodoPersistedRow({
           </Tooltip>
         </Group>
       </Group>
+    </Box>
+  );
+}
+
+/** Read-only stand-in shown over the textarea while a row is unfocused: `[tag]` runs render as Pills. */
+function TodoRowTagOverlay({
+  text,
+  done,
+  onClick,
+}: {
+  text: string;
+  done: boolean;
+  onClick: () => void;
+}) {
+  const segments = useMemo(() => parseTodoTextSegments(text), [text]);
+
+  return (
+    <Box
+      onClick={onClick}
+      pos="absolute"
+      style={{
+        inset: 0,
+        cursor: "text",
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+        paddingTop: "2px",
+        paddingBottom: "2px",
+        lineHeight: 2.1,
+        fontSize: "var(--mantine-font-size-sm)",
+        ...(done
+          ? {
+              textDecoration: "line-through",
+              opacity: 0.55,
+            }
+          : {}),
+      }}
+    >
+      {segments.map((segment, i) =>
+        segment.kind === "tag" ? (
+          <Pill
+            key={i}
+            size="sm"
+            mx={2}
+            style={{ display: "inline-flex", verticalAlign: "middle" }}
+          >
+            {segment.value}
+          </Pill>
+        ) : (
+          <span key={i}>{segment.value}</span>
+        ),
+      )}
     </Box>
   );
 }
