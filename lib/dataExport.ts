@@ -4,6 +4,11 @@ import {
   type PomodoroExportV1,
 } from "@/app/_stores/pomodoroStore";
 import {
+  migrateTagColorSliceToLatest,
+  tagColorActions,
+  type TagColorExportV1,
+} from "@/app/_stores/tagColorStore";
+import {
   flushTodoPersistToStorage,
   migrateTodoSliceToLatest,
   todoActions,
@@ -12,13 +17,14 @@ import {
 import log from "@/lib/logger";
 
 /** Bump when the **bundle** layout changes (not necessarily every slice bump). */
-export const CURRENT_DEEPDASH_EXPORT_VERSION = 3 as const;
+export const CURRENT_DEEPDASH_EXPORT_VERSION = 4 as const;
 
 export type DeepdashExportLatest = {
   version: typeof CURRENT_DEEPDASH_EXPORT_VERSION;
   exportedAt: string;
   pomodoro: PomodoroExportV1;
   todo: TodoExportV3;
+  tagColors: TagColorExportV1;
 };
 
 /** Builds the bundle from live stores / `localStorage` (browser only). */
@@ -32,6 +38,7 @@ export async function collectDeepdashExport(): Promise<DeepdashExportLatest> {
     exportedAt: new Date().toISOString(),
     pomodoro: await pomodoroActions.exportData(),
     todo: await todoActions.exportData(),
+    tagColors: tagColorActions.exportData(),
   };
 }
 
@@ -62,7 +69,7 @@ export type DeepdashImportError = {
   message: string;
 };
 
-export type DeepdashImportModuleId = "pomodoro" | "todo";
+export type DeepdashImportModuleId = "pomodoro" | "todo" | "tagColors";
 export type DeepdashImportErrorPhase = "bundle" | "migration" | "import" | "rollback" | "backup";
 
 /**
@@ -93,6 +100,7 @@ export async function runDeepdashJsonImportFromText(text: string): Promise<Deepd
     exportedAt: mig.exportedAt,
     pomodoro: mig.pomodoro,
     todo: mig.todo,
+    tagColors: mig.tagColors,
   };
 
   const applied = await applyDeepdashImportWithRollback(latest);
@@ -108,6 +116,7 @@ export type TryMigrateDeepdashBundleResult =
       exportedAt: string;
       pomodoro: PomodoroExportV1;
       todo: TodoExportV3;
+      tagColors: TagColorExportV1;
     }
   | { ok: false; errors: DeepdashImportError[] };
 
@@ -123,7 +132,7 @@ export function tryMigrateDeepdashBundle(raw: unknown): TryMigrateDeepdashBundle
   }
 
   const r = raw as Record<string, unknown>;
-  const { exportedAt, pomodoroPayload, todoPayload } = extractSlicePayloads(r);
+  const { exportedAt, pomodoroPayload, todoPayload, tagColorsPayload } = extractSlicePayloads(r);
 
   log.debug("deepdash migration phase: slice payloads prepared", {
     exportedAt,
@@ -132,6 +141,7 @@ export function tryMigrateDeepdashBundle(raw: unknown): TryMigrateDeepdashBundle
   const errors: DeepdashImportError[] = [];
   let pomodoro: PomodoroExportV1 | undefined;
   let todo: TodoExportV3 | undefined;
+  let tagColors: TagColorExportV1 | undefined;
 
   const trySlice = (module: DeepdashImportModuleId, fn: () => void): void => {
     try {
@@ -149,6 +159,9 @@ export function tryMigrateDeepdashBundle(raw: unknown): TryMigrateDeepdashBundle
   trySlice("todo", () => {
     todo = migrateTodoSliceToLatest(todoPayload);
   });
+  trySlice("tagColors", () => {
+    tagColors = migrateTagColorSliceToLatest(tagColorsPayload);
+  });
 
   if (errors.length > 0) {
     log.warn("deepdash migration phase: completed with errors", {
@@ -164,6 +177,7 @@ export function tryMigrateDeepdashBundle(raw: unknown): TryMigrateDeepdashBundle
     exportedAt,
     pomodoro: pomodoro!,
     todo: todo!,
+    tagColors: tagColors!,
   };
 }
 
@@ -188,6 +202,7 @@ async function applyDeepdashImport(data: DeepdashExportLatest): Promise<void> {
   }
   await pomodoroActions.importData(data.pomodoro);
   await todoActions.importData(data.todo);
+  tagColorActions.importData(data.tagColors);
 }
 
 type ApplyDeepdashImportWithRollbackResult =
@@ -221,6 +236,7 @@ export async function applyDeepdashImportWithRollback(
   const steps: { module: DeepdashImportModuleId; run: () => Promise<void> }[] = [
     { module: "pomodoro", run: async () => pomodoroActions.importData(data.pomodoro) },
     { module: "todo", run: async () => todoActions.importData(data.todo) },
+    { module: "tagColors", run: async () => tagColorActions.importData(data.tagColors) },
   ];
 
   let importFailure: { module: DeepdashImportModuleId; message: string } | null = null;
@@ -295,6 +311,7 @@ function extractSlicePayloads(raw: Record<string, unknown>): {
   exportedAt: string;
   pomodoroPayload: unknown;
   todoPayload: unknown;
+  tagColorsPayload: unknown;
 } {
   const exportedAt =
     typeof raw.exportedAt === "string" && raw.exportedAt.length > 0
@@ -310,10 +327,14 @@ function extractSlicePayloads(raw: Record<string, unknown>): {
           todosByDay: raw.todosByDay ?? {},
         };
 
+  /** Older bundles (pre-v4) have no `tagColors` slice at all — migration defaults it to empty. */
+  const tagColorsPayload = raw.tagColors != null ? raw.tagColors : {};
+
   return {
     exportedAt,
     pomodoroPayload,
     todoPayload,
+    tagColorsPayload,
   };
 }
 

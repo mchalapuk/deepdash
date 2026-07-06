@@ -20,6 +20,9 @@ export const TODO_IDB_LEGACY_MIGRATED_KEY = "deepdash.todo.tasks.idbLegacyMigrat
 /** Set after first-run demo data is skipped (existing user) or applied (blank profile). */
 export const FIRST_RUN_SEED_HANDLED_KEY = "deepdash.firstRunSeedHandled.v1";
 
+/** Random per-tag `[tag]` Pill color assignments, keyed by normalized tag text. JSON: `{ colors: Record<string, string> }`. */
+export const TAG_COLOR_STORAGE_KEY = "deepdash.tagColors.v1";
+
 let legacyPersistMigrationDone = false;
 
 /**

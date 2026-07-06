@@ -37,8 +37,7 @@ export function buildFirstRunSeedBundle(): DeepdashExportLatest {
       todosByDay: {
         [day]: {
           items: [
-            { id: "seed-todo-1", text: "Star DeepDash on Github", done: false },
-            { id: "seed-todo-2", text: "Try import/export in Settings", done: false },
+            { id: "seed-todo-1", text: "[community] Give a star to DeepDash on Github", done: false },
             { id: "seed-todo-3", text: "Add tasks to this list", done: false },
             { id: "seed-todo-4", text: "Start working using Pomodoro", done: false },
             { id: "seed-todo-5", text: "Clear your inbox", done: false },
@@ -47,7 +46,7 @@ export function buildFirstRunSeedBundle(): DeepdashExportLatest {
         },
       },
       backlogItems: [
-        { id: "seed-backlog-1", text: "Write an essay about AI", done: false },
+        { id: "seed-backlog-1", text: "[community] Write an essay about artificial intelligence", done: false },
         {
           id: "seed-backlog-2",
           text: "Unsubscribe from newsletters that are distracting you",
@@ -69,6 +68,12 @@ export function buildFirstRunSeedBundle(): DeepdashExportLatest {
           done: false,
         },
       ],
+    },
+    tagColors: {
+      version: 1,
+      colors: {
+        community: "pink",
+      },
     },
   };
 }

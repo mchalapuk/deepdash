@@ -16,6 +16,7 @@ import {
 } from "@tabler/icons-react";
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -24,6 +25,11 @@ import {
   type KeyboardEvent,
 } from "react";
 
+import {
+  normalizeTagKey,
+  tagColorActions,
+  useTagColors,
+} from "@/app/_stores/tagColorStore";
 import {
   todoActions,
   type TodoItem,
@@ -99,7 +105,6 @@ export function TodoPersistedRow({
               backgroundColor: "rgba(255, 255, 255, 0.07)",
             }
           : {}),
-        opacity: isHighlighted ? 1 : 0.6,
       }}
     >
       <Group wrap="nowrap" gap={7} align="flex-start" w="100%" pl={6} pr={4}>
@@ -109,7 +114,7 @@ export function TodoPersistedRow({
           aria-label={done ? "Mark as not done" : "Mark as done"}
           size="xs"
           color="gray.7"
-          opacity={0.9}
+          opacity={isHighlighted ? 0.9 : 0.54}
           pos="relative"
           top={7}
           onFocus={onIconFocus}
@@ -152,6 +157,7 @@ export function TodoPersistedRow({
             <TodoRowTagOverlay
               text={text}
               done={done}
+              isHighlighted={isHighlighted}
               onClick={() => focusAPI.focusRow(id, text.length)}
             />
           )}
@@ -163,8 +169,9 @@ export function TodoPersistedRow({
           style={{
             flexShrink: 0,
             marginTop: 4,
+            opacity: isHighlighted ? 1 : 0.6,
           }}
-        > 
+        >
           <Tooltip
             label={moveLabel}
             position="top-end"
@@ -250,13 +257,27 @@ export function TodoPersistedRow({
 function TodoRowTagOverlay({
   text,
   done,
+  isHighlighted,
   onClick,
 }: {
   text: string;
   done: boolean;
+  isHighlighted: boolean;
   onClick: () => void;
 }) {
   const segments = useMemo(() => parseTodoTextSegments(text), [text]);
+  const tagValues = useMemo(
+    () => segments.filter((s) => s.kind === "tag").map((s) => s.value),
+    [segments],
+  );
+  const colors = useTagColors();
+
+  /** First time a `[tag]` appears anywhere, it gets a random color; later renders just read it back. */
+  useEffect(() => {
+    for (const value of tagValues) {
+      tagColorActions.ensureColor(value);
+    }
+  }, [tagValues]);
 
   return (
     <Box
@@ -271,28 +292,50 @@ function TodoRowTagOverlay({
         paddingBottom: "2px",
         lineHeight: 2.1,
         fontSize: "var(--mantine-font-size-sm)",
-        ...(done
-          ? {
-              textDecoration: "line-through",
-              opacity: 0.55,
-            }
-          : {}),
+        ...(done ? { opacity: 0.55 } : {}),
       }}
     >
-      {segments.map((segment, i) =>
-        segment.kind === "tag" ? (
+      {segments.map((segment, i) => {
+        if (segment.kind === "text") {
+          const leading = segment.value.match(/^\s*/)?.[0] ?? "";
+          const rest = segment.value.slice(leading.length);
+          const trailing = rest.match(/\s*$/)?.[0] ?? "";
+          const core = rest.slice(0, rest.length - trailing.length);
+          return (
+            <span key={i} style={{ opacity: isHighlighted ? 1 : 0.6 }}>
+              {leading}
+              <span
+                style={done ? { textDecoration: "line-through" } : undefined}
+              >
+                {core}
+              </span>
+              {trailing}
+            </span>
+          );
+        }
+        const color = colors[normalizeTagKey(segment.value)];
+        return (
           <Pill
             key={i}
             size="sm"
             mx={2}
-            style={{ display: "inline-flex", verticalAlign: "middle" }}
+            style={{
+              display: "inline-flex",
+              verticalAlign: "middle",
+              color: "white",
+              opacity: .75,
+              height: "20px",
+              ...(color
+                ? {
+                  backgroundColor: `var(--mantine-color-${color}-${color === "gray" ? 7 : 9})`,
+                  }
+                : {}),
+            }}
           >
             {segment.value}
           </Pill>
-        ) : (
-          <span key={i}>{segment.value}</span>
-        ),
-      )}
+        );
+      })}
     </Box>
   );
 }

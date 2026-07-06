@@ -4,6 +4,7 @@ import { pomodoroActions } from "@/app/_stores/pomodoroStore";
 import { todoActions } from "@/app/_stores/todoStore";
 import exportV1Fixture from "../__fixtures__/export-v1.json";
 import exportV2Fixture from "../__fixtures__/export-v2.json";
+import exportV3Fixture from "../__fixtures__/export-v3.json";
 import todoSliceV1Fixture from "../__fixtures__/todo-slice-v1.json";
 import todoSliceV2PerDayBacklogFixture from "../__fixtures__/todo-slice-v2-perday-backlog.json";
 import {
@@ -15,6 +16,7 @@ import {
   type DeepdashExportLatest,
 } from "@/lib/dataExport";
 import { migrateTodoSliceToLatest } from "@/app/_stores/todoStore";
+import { migrateTagColorSliceToLatest } from "@/app/_stores/tagColorStore";
 import { __resetPomodoroDatabaseForTests } from "@/lib/pomodoroIndexedDb";
 import { __resetTodoDatabaseForTests } from "@/lib/todoIndexedDb";
 
@@ -29,6 +31,7 @@ function expectMigratedBundle(raw: unknown): DeepdashExportLatest {
     exportedAt: r.exportedAt,
     pomodoro: r.pomodoro,
     todo: r.todo,
+    tagColors: r.tagColors,
   };
 }
 
@@ -71,6 +74,7 @@ describe("dataExport migrations", () => {
         },
         backlogItems: [],
       },
+      tagColors: { version: 1, colors: {} },
     };
 
     expect(result).toEqual(expected);
@@ -85,6 +89,17 @@ describe("dataExport migrations", () => {
     expect(result.todo.todosByDay["2026-05-02"]?.items[0]?.text).toBe(
       "Migrated from v2 export",
     );
+  });
+
+  it("migrates v3 bundle (pre-tagColors) to the current canonical bundle, defaulting tagColors to empty", () => {
+    const result = expectMigratedBundle(exportV3Fixture);
+
+    expect(result.version).toBe(CURRENT_DEEPDASH_EXPORT_VERSION);
+    expect(result.exportedAt).toBe("2026-06-01T12:00:00.000Z");
+    expect(result.todo.todosByDay["2026-06-02"]?.items[0]?.text).toBe(
+      "Migrated from v3 export",
+    );
+    expect(result.tagColors).toEqual({ version: 1, colors: {} });
   });
 
   it("migrates legacy flat bundle v1 (pre–nested slices)", () => {
@@ -224,6 +239,31 @@ describe("dataExport migrations", () => {
       ],
     });
   });
+
+  it("migrates an absent tagColors slice (pre-v4 bundles) to an empty v1 slice", () => {
+    expect(migrateTagColorSliceToLatest(undefined)).toEqual({
+      version: 1,
+      colors: {},
+    });
+  });
+
+  it("migrates a valid tagColors slice, dropping entries with unrecognized colors", () => {
+    expect(
+      migrateTagColorSliceToLatest({
+        version: 1,
+        colors: { errand: "cyan", bogus: "not-a-mantine-color" },
+      }),
+    ).toEqual({
+      version: 1,
+      colors: { errand: "cyan" },
+    });
+  });
+
+  it("rejects unsupported tagColors slice versions", () => {
+    expect(() => migrateTagColorSliceToLatest({ version: 99, colors: {} })).toThrow(
+      /unsupported export slice version 99/,
+    );
+  });
 });
 
 describe("applyDeepdashImportWithRollback", () => {
@@ -255,6 +295,7 @@ describe("applyDeepdashImportWithRollback", () => {
         todosByDay: {},
         backlogItems: [{ id: "seed-bl", text: "rollback-check", done: false }],
       },
+      tagColors: { version: 1, colors: {} },
     };
 
     const incoming: DeepdashExportLatest = {

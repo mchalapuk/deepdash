@@ -11,8 +11,7 @@ describe("firstRunSeed bundle", () => {
 
     const day = localDayKey();
     expect(r.todo.todosByDay[day]?.items.map((i) => i.text)).toEqual([
-      "Star DeepDash on Github",
-      "Try import/export in Settings",
+      "[community] Give a star to DeepDash on Github",
       "Add tasks to this list",
       "Start working using Pomodoro",
       "Clear your inbox",
@@ -20,7 +19,7 @@ describe("firstRunSeed bundle", () => {
     ]);
 
     expect(r.todo.backlogItems.map((i) => i.text)).toEqual([
-      "Write an essay about AI",
+      "[community] Write an essay about artificial intelligence",
       "Unsubscribe from newsletters that are distracting you",
       "Add deep work slots for the week to your calendar",
       "Export DeepDash data and store it in your cloud",
@@ -29,5 +28,6 @@ describe("firstRunSeed bundle", () => {
 
     expect(r.pomodoro.config.workDurationMs).toBe(25 * 60 * 1000);
     expect(r.pomodoro.logs.days).toEqual({});
+    expect(r.tagColors.colors.community).toBe("pink");
   });
 });

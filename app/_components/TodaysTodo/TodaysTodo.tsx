@@ -17,6 +17,7 @@ import {
   type RefObject,
 } from "react";
 
+import { tagColorActions } from "@/app/_stores/tagColorStore";
 import {
   todoActions,
   useTodoList,
@@ -65,7 +66,12 @@ function scheduleAfterViewportSmoothScroll(
 
 export function TodaysTodo() {
   useEffect(() => {
-    return todoActions.init();
+    const stopTodo = todoActions.init();
+    const stopTagColors = tagColorActions.init();
+    return () => {
+      stopTodo();
+      stopTagColors();
+    };
   }, []);
 
   const { hydrated, items: todayItems, backlogItems } = useTodoList();
