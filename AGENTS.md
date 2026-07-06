@@ -14,9 +14,25 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 This app is **deployed as static files only** (e.g. Next.js **`output: 'export'`**). There is **no server-side runtime** for HTML requests: no API routes that execute on a Node server, no SSR-only data fetching at request time, and **no reliance on a dynamic server** to serve the UI. When adding features, assume **client-side execution** and **static hosting** (CDN, S3, GitHub Pages, etc.).
 
+### Build command does more than `next build`
+
+`npm run build` runs `next build && node scripts/inject-csp-meta.mjs` — the second step injects a CSP meta tag into the exported HTML. Don't shortcut to a bare `next build` when verifying a build.
+
+### No dedicated typecheck script
+
+`tsconfig.json` has `strict: true` and `noEmit: true`, but there is no `npm run typecheck` script. Type errors only surface via `next build` or editor tooling — run `npx tsc --noEmit` directly if you need a standalone check.
+
+### Deployment is a force-push, not CI
+
+There is no CI pipeline. `./deploy.sh` builds and force-pushes the `out/` directory to a `pages` branch. Treat this as a destructive, user-triggered action — never run it unprompted.
+
 ## No runtime network usage
 
 Do **not** introduce **runtime** `fetch`/`XMLHttpRequest` to the public internet for **fonts**, **images**, telemetry, or other assets. Use **bundled** resources: `next/font/local` with files in the repo, **local images only**, and dependencies that do not pull from CDNs or remote APIs when the app runs. For **IANA timezone names**, use **`Intl.supportedValuesOf('timeZone')`** in supporting browsers (in-process API, not a network call); use a **small compiled fallback list** only if that API is unavailable in a target environment.
+
+### Service worker caches the app shell offline
+
+`public/sw.js` caches static assets for offline use. Keep this in mind alongside the no-runtime-network-usage rule above — changes to cached assets may need a service-worker cache-version bump to take effect for returning users.
 
 ## Persisted data: import/export and schema tests
 
