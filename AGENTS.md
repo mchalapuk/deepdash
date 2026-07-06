@@ -26,6 +26,12 @@ This app is **deployed as static files only** (e.g. Next.js **`output: 'export'`
 
 There is no CI pipeline. `./deploy.sh` builds and force-pushes the `out/` directory to a `pages` branch. Treat this as a destructive, user-triggered action — never run it unprompted.
 
+## Running tests
+
+**Unit tests**: `npm test` runs Jest against `__tests__/**/*.test.ts` (see `jest.config.cjs`). Fixtures live in `__fixtures__/`.
+
+**End-to-end tests**: `npm run test:e2e` runs Playwright (`playwright.config.ts`) against spec files in `e2e/**`. It launches its own `next dev` on port 3100 (`reuseExistingServer` outside CI) — no need to start a dev server manually first. Since the app persists todo/pomodoro/etc. state to `localStorage`, e2e specs should clear it per-test via `page.addInitScript(() => window.localStorage.clear())` before `page.goto(...)` to start from a clean slate.
+
 ## No runtime network usage
 
 Do **not** introduce **runtime** `fetch`/`XMLHttpRequest` to the public internet for **fonts**, **images**, telemetry, or other assets. Use **bundled** resources: `next/font/local` with files in the repo, **local images only**, and dependencies that do not pull from CDNs or remote APIs when the app runs. For **IANA timezone names**, use **`Intl.supportedValuesOf('timeZone')`** in supporting browsers (in-process API, not a network call); use a **small compiled fallback list** only if that API is unavailable in a target environment.

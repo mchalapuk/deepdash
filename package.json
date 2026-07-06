@@ -7,7 +7,8 @@
     "build": "next build && node scripts/inject-csp-meta.mjs",
     "start": "next start",
     "lint": "eslint",
-    "test": "jest"
+    "test": "jest",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@mantine/core": "^9.1.1",
@@ -23,6 +24,7 @@
     "valtio": "^2.3.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@swc/core": "^1.15.21",
     "@swc/jest": "^0.2.39",
     "@tailwindcss/postcss": "^4",
