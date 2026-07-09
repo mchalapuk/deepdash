@@ -487,6 +487,7 @@ function startPomodoroTimerEngine(
   const id = window.setInterval(() => {
     const nowMs = Date.now();
     maybeSplitActivePhaseAtLocalMidnight(nowMs);
+    abandonStalePausedWorkRunIfAny(nowMs);
 
     const r = pomodoroStore.activePhaseRun;
     const running = isRunning(r);
@@ -711,6 +712,42 @@ function nextBreakType(day: string): PomodoroPhase {
 function countPomodoroSessions(day: string): number {
   if (day !== pomodoroStore.dayKey) return 0;
   return pomodoroStore.dayLog.entries.filter((e) => e.phase === "work" && e.deletedAtMs == null).length;
+}
+
+/**
+ * A pomodoro paused this long has been abandoned rather than briefly interrupted: the user could
+ * have taken (and finished) the next break in that time and not come back.
+ */
+function pausedWorkAbandonThresholdMs(): number {
+  return durationForPhase(nextBreakType(localDayKey()), pomodoroStore.config);
+}
+
+function isPausedWorkRunStale(
+  r: ActivePhaseRun | Snapshot<ActivePhaseRun>,
+  nowMs: number,
+): boolean {
+  if (r.phase !== "work" || r.openPauseStartMs == null) return false;
+  return nowMs - r.openPauseStartMs > pausedWorkAbandonThresholdMs();
+}
+
+/** Drops a pomodoro paused past {@link pausedWorkAbandonThresholdMs} without logging it. */
+function abandonStalePausedWorkRunIfAny(nowMs: number): void {
+  const r = pomodoroStore.activePhaseRun;
+  if (!r || !isPausedWorkRunStale(r, nowMs)) return;
+  pomodoroStore.activePhaseRun = null;
+}
+
+/** @internal */
+export function __isPausedWorkRunStaleForTests(
+  r: ActivePhaseRun,
+  nowMs: number,
+): boolean {
+  return isPausedWorkRunStale(r, nowMs);
+}
+
+/** @internal */
+export function __runPausedWorkAbandonCheckForTests(nowMs: number): void {
+  abandonStalePausedWorkRunIfAny(nowMs);
 }
 
 // --- time-related helpers ---
@@ -1060,7 +1097,7 @@ function loadActiveSessionFromStorage(): void {
   }
   const run = reconcileActiveSessionAfterLoad(file.activePhaseRun);
   pomodoroStore.phase = file.phase;
-  if (!run) {
+  if (!run || isPausedWorkRunStale(run, Date.now())) {
     pomodoroStore.activePhaseRun = null;
     clearActiveSessionStorage();
     lastActiveJson = "";
