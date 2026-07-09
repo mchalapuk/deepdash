@@ -27,6 +27,8 @@ import {
 } from "@/app/_stores/pomodoroStore";
 import { usePhaseBackgroundColor } from "@/lib/layout";
 
+import { GithubBadge } from "./GithubBadge";
+
 export function TodaysWork() {
   const hydrated = usePomodoroHydrated();
   const totalMs = useTodayWorkMsDisplay();
@@ -110,9 +112,7 @@ export function TodaysWork() {
           }}
         >
           <Group gap={4} wrap="nowrap" justify="space-between" pb={2}>
-            <Text size="sm" c="dimmed" opacity={0}>
-              Today&apos;s deep work:
-            </Text>
+            <div className="-mx-2.5 overflow-visible h-0"><GithubBadge className="relative -top-3" /></div>
             <Text size="sm" w="20.5%" c="dimmed">
               {hydrated ? formatDurationMs(totalMs): " "}
             </Text>
