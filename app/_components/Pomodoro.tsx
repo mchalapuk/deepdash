@@ -281,6 +281,10 @@ function usePomodoroMechanics(): [PomodoroPhase, boolean, boolean] {
   useEffect(() => {
     return pomodoroActions.init({
       onPhaseDeadlineCrossed: phaseCompleteNotification,
+      onBreakPhaseCompleted: (completed) => {
+        playChimeOnce();
+        phaseCompleteNotification(completed);
+      },
     });
   }, []);
 
@@ -377,6 +381,16 @@ function usePausePomodoroOnAudioPause(): void {
       audio.src = "";
     };
   }, [running, paused]);
+}
+
+/** One-off chime for a break ending — no preload/ref needed since it fires at most once per run. */
+function playChimeOnce(): void {
+  if (typeof window === "undefined") return;
+  const chime = new Audio(POMODORO_CHIME_MP3);
+  chime.volume = 0.8;
+  void chime.play().catch((err: unknown) => {
+    log.error("pomodoro: failed to play break-complete chime", err);
+  });
 }
 
 function phaseTitle(p: PomodoroPhase): string {

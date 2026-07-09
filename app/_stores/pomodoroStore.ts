@@ -293,8 +293,16 @@ export function usePomodoroHydrated(): boolean {
 }
 
 export type PomodoroInitOptions = {
-  /** Called once per run when the wall-clock deadline is crossed (phase stays active until `nextPhase`). */
+  /**
+   * Called once per work run when the wall-clock deadline is crossed (phase stays active,
+   * counting up, until `nextPhase`). Breaks never reach this — see {@link onBreakPhaseCompleted}.
+   */
   onPhaseDeadlineCrossed?: (completedPhase: PomodoroPhase) => void;
+  /**
+   * Called once when a break's wall-clock deadline is crossed. Unlike work, the break run is
+   * finalized and the phase switches to idle work immediately (no count-up, no repeat cues).
+   */
+  onBreakPhaseCompleted?: (completedPhase: PomodoroPhase) => void;
 };
 
 export const pomodoroActions = {
@@ -339,7 +347,7 @@ export const pomodoroActions = {
 
     const stopEngine =
       typeof window !== "undefined"
-        ? startPomodoroTimerEngine(options?.onPhaseDeadlineCrossed)
+        ? startPomodoroTimerEngine(options?.onPhaseDeadlineCrossed, options?.onBreakPhaseCompleted)
         : () => {};
 
     return () => {
@@ -468,6 +476,7 @@ export const pomodoroActions = {
 
 function startPomodoroTimerEngine(
   onPhaseDeadlineCrossed?: (completedPhase: PomodoroPhase) => void,
+  onBreakPhaseCompleted?: (completedPhase: PomodoroPhase) => void,
 ): () => void {
   const id = window.setInterval(() => {
     const nowMs = Date.now();
@@ -477,9 +486,17 @@ function startPomodoroTimerEngine(
     const running = isRunning(r);
 
     if (running && r && nowMs >= flipClockEndsAtMs(pomodoroStore)) {
-      if (!r.deadlineCrossedNotified) {
-        r.deadlineCrossedNotified = true;
-        onPhaseDeadlineCrossed?.(pomodoroStore.phase);
+      const completedPhase = r.phase;
+      if (completedPhase === "work") {
+        if (!r.deadlineCrossedNotified) {
+          r.deadlineCrossedNotified = true;
+          onPhaseDeadlineCrossed?.(completedPhase);
+        }
+      } else {
+        // Breaks don't count up waiting for the user: finalize and drop straight into idle work.
+        finalizeActivePhase();
+        applyPhaseWithFullDuration("work");
+        onBreakPhaseCompleted?.(completedPhase);
       }
     }
   }, POMODORO_TIMER_INTERVAL_MS);
