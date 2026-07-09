@@ -188,11 +188,11 @@ function Countdown({ running }: { running: boolean }) {
 function PrimaryButton({ phase, running, paused }: { phase: PomodoroPhase, running: boolean, paused: boolean }) {
   const expired = useCurrentPhaseExpired();
   const primaryButtonText = running
-    ? expired
-      ? phase === "work"
+    ? phase !== "work"
+      ? "End"
+      : expired
         ? "Take a Break"
-        : "Start Working"
-      : "Pause"
+        : "Pause"
     : paused
       ? "Resume"
       : "Start";
@@ -201,7 +201,9 @@ function PrimaryButton({ phase, running, paused }: { phase: PomodoroPhase, runni
 
   const handlePrimaryClick = () => {
     if (running) {
-      if (expired) {
+      if (phase !== "work") {
+        pomodoroActions.endBreak();
+      } else if (expired) {
         pomodoroActions.nextPhase();
       } else {
         pomodoroActions.pause();

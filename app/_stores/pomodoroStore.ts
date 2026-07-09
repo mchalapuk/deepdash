@@ -396,6 +396,12 @@ export const pomodoroActions = {
   stopAndReset: function stopAndReset(): void {
     pomodoroStore.activePhaseRun = null;
   },
+  /** Manually ends a running/paused break early: finalizes it and drops into idle work (not started). */
+  endBreak: function endBreak(): void {
+    const r = pomodoroStore.activePhaseRun;
+    if (!r || r.phase === "work") return;
+    transitionBreakToIdleWork();
+  },
   stepPhaseDurationMinutes: function stepPhaseDurationMinutes(delta: 1 | -1): void {
     const p = pomodoroStore.phase;
 
@@ -494,8 +500,7 @@ function startPomodoroTimerEngine(
         }
       } else {
         // Breaks don't count up waiting for the user: finalize and drop straight into idle work.
-        finalizeActivePhase();
-        applyPhaseWithFullDuration("work");
+        transitionBreakToIdleWork();
         onBreakPhaseCompleted?.(completedPhase);
       }
     }
@@ -673,6 +678,12 @@ async function syncPomodoroCalendarDayIfNeededAsync(): Promise<void> {
 function applyPhaseWithFullDuration(next: PomodoroPhase): void {
   pomodoroStore.phase = next;
   pomodoroStore.activePhaseRun = null;
+}
+
+/** Finalizes the active break run and switches to idle work (not started). */
+function transitionBreakToIdleWork(): void {
+  finalizeActivePhase();
+  applyPhaseWithFullDuration("work");
 }
 
 /** Starts a running countdown for the current phase (idle Start, or after `pomodoroActions.nextPhase`). */
