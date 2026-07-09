@@ -1,6 +1,6 @@
 "use client";
 
-import { ActionIcon, Box, Stack, Tooltip } from "@mantine/core";
+import { ActionIcon, Stack, Group, Tooltip } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { type ChangeEvent, type RefObject, useCallback, useRef } from "react";
 
@@ -16,8 +16,9 @@ import { IconDownload, IconUpload } from "@tabler/icons-react";
 const exportDataLabel = "Export data";
 const importDataLabel = "Import data";
 
-export function DataImportExport() {
+export function DataImportExport({ layout = "vertical" }: { layout: "vertical" | "horizontal" }) {
   const [fileInputRef, onExport, onPickImportFile, onFileChange] = useDataImportExport();
+  const Layout = layout === "vertical" ? Stack : Group;
 
   return (
     <>
@@ -29,58 +30,50 @@ export function DataImportExport() {
         aria-hidden
         onChange={onFileChange}
       />
-      <Box
-        pos="fixed"
-        bottom={38}
-        right={32}
-        style={{ zIndex: 200 }}
-        aria-label="Export and import app data"
-      >
-        <Stack gap={6}>
-          <Tooltip
-            label={exportDataLabel}
-            position="right"
-            withArrow
-            arrowOffset={10}
-            arrowSize={8}
-            events={{ hover: true, focus: true, touch: true }}
-            color="darker.8"
-            openDelay={500}
-            transitionProps={{ transition: 'fade-left', duration: 300 }}
+      <Layout gap={6}>
+        <Tooltip
+          label={exportDataLabel}
+          position="right"
+          withArrow
+          arrowOffset={10}
+          arrowSize={8}
+          events={{ hover: true, focus: true, touch: true }}
+          color="darker.8"
+          openDelay={500}
+          transitionProps={{ transition: 'fade-left', duration: 300 }}
+        >
+          <ActionIcon
+            size="md"
+            color="gray.8"
+            onClick={onExport}
+            aria-label={exportDataLabel}
+            className="opacity-80 hover:opacity-100"
           >
-            <ActionIcon
-              size="md"
-              color="gray.8"
-              onClick={onExport}
-              aria-label={exportDataLabel}
-              className="opacity-80 hover:opacity-100"
-            >
-              <IconDownload size={16} />
-            </ActionIcon>
-          </Tooltip>
-          <Tooltip
-            label={importDataLabel}
-            position="right"
-            withArrow
-            arrowOffset={10}
-            arrowSize={8}
-            events={{ hover: true, focus: true, touch: true }}
-            color="darker.8"
-            openDelay={500}
-            transitionProps={{ transition: 'fade-left', duration: 300 }}
+            <IconDownload size={16} />
+          </ActionIcon>
+        </Tooltip>
+        <Tooltip
+          label={importDataLabel}
+          position="right"
+          withArrow
+          arrowOffset={10}
+          arrowSize={8}
+          events={{ hover: true, focus: true, touch: true }}
+          color="darker.8"
+          openDelay={500}
+          transitionProps={{ transition: 'fade-left', duration: 300 }}
+        >
+          <ActionIcon
+            size="md"
+            color="gray.8"
+            onClick={onPickImportFile}
+            aria-label={importDataLabel}
+            className="opacity-80 hover:opacity-100"
           >
-            <ActionIcon
-              size="md"
-              color="gray.8"
-              onClick={onPickImportFile}
-              aria-label={importDataLabel}
-              className="opacity-80 hover:opacity-100"
-            >
-              <IconUpload size={16} />
-            </ActionIcon>
-          </Tooltip>
-        </Stack>
-      </Box>
+            <IconUpload size={16} />
+          </ActionIcon>
+        </Tooltip>
+      </Layout>
     </>
   );
 }

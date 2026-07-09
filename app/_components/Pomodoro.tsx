@@ -9,6 +9,7 @@ import {
   Stack,
   Tabs,
   Tooltip,
+  useMatches,
 } from "@mantine/core";
 import {
   IconChevronDown,
@@ -75,7 +76,7 @@ function TabPanel({ phase, running }: { phase: PomodoroPhase, running: boolean }
           <Tabs.Tab
             key={value}
             value={value}
-            h={64}
+            h={{ base: 52, md: 64 }}
             styles={phase === value ? {
               tab: {
                 backgroundColor: "transparent",
@@ -97,6 +98,10 @@ function TabPanel({ phase, running }: { phase: PomodoroPhase, running: boolean }
 
 function Countdown({ running }: { running: boolean }) {
   const secondsRemaining = useFlipSecondsRemaining();
+  const [scale, my] = useMatches<[number, number]>({
+    base: [.7, -18],
+    md: [1, 0],
+  })
 
   /** Steppers visible only when no active phase */
   const showSteppers = !running;
@@ -111,6 +116,10 @@ function Countdown({ running }: { running: boolean }) {
       gap="xs"
       pb={2}
       w="100%"
+      my={my}
+      style={{
+        "transform": `scale(${scale})`
+      }}
     >
       <Box
         style={{ flexGrow: 1 }}
@@ -133,7 +142,12 @@ function Countdown({ running }: { running: boolean }) {
         className="flex justify-center"
       >
         {showSteppers ? (
-          <Stack gap={2} align="center" ml="-3.6rem">
+          <Stack
+            gap={2}
+            align="center"
+            ml={{ base: "0", md:"-3.6rem" }}
+            mr={{ base: "-5.9rem", md: 0 }}
+          >
             <Tooltip
               label={addMinuteLabel}
               position="right"
@@ -226,6 +240,7 @@ function PrimaryButton({ phase, running, paused }: { phase: PomodoroPhase, runni
       justify="center"
       gap="xs"
       className="w-full"
+      mb={{ base: -4, md: 0 }}
     >
       <Box
         style={{ width: sideControlSlotPx, flexShrink: 0 }}
@@ -236,6 +251,7 @@ function PrimaryButton({ phase, running, paused }: { phase: PomodoroPhase, runni
 
       <Button
         size="xl"
+        h={{ base: 52, md: 60 }}
         radius="md"
         px="xl"
         variant="filled"
