@@ -21,21 +21,18 @@ import log from "@/lib/logger";
 import {
   pomodoroActions,
   useActivePhaseDeadlineCrossed,
-  useActivePhaseMidnightContinuation,
-  useActivePhaseRunStartedAt,
   useCurrentPhase,
   useCurrentPhaseExpired,
   useFlipSecondsRemaining,
   useIsRunning,
   useIsPaused,
-  useSecondsRemaining,
 } from "@/app/_stores/pomodoroStore";
 
 import { FlipTimer } from "./FlipTimer";
 
-const POMODORO_INTRO_WAV = "/PomodoroChime_intro.wav";
-const POMODORO_MAIN_WAV = "/PomodoroChime_main.wav";
-const POMODORO_SILENCE_MP3 = "/silence.mp3";
+const POMODORO_CHIME_MP3 = "/chime.mp3";
+const POMODORO_CHIME_REPEAT_MS = 5 * 60 * 1000;
+const POMODORO_SILENCE_MP3 = "/1sec_silence.mp3";
 
 export function Pomodoro() {
   const [phase, running, paused] = usePomodoroMechanics();
@@ -300,19 +297,11 @@ function usePomodoroMechanics(): [PomodoroPhase, boolean, boolean] {
 }
 
 function usePomodoroSounds(): void {
-  const introAudioRef = useRef<HTMLAudioElement | null>(null);
-  const mainAudioRef = useRef<HTMLAudioElement | null>(null);
-  const introPlayedForRunStartedAtRef = useRef<number | null>(null);
-
-  const running = useIsRunning();
-  const paused = useIsPaused();
-  const secondsRemaining = useSecondsRemaining();
-  const runStartedAt = useActivePhaseRunStartedAt();
+  const chimeAudioRef = useRef<HTMLAudioElement | null>(null);
   const deadlineCrossed = useActivePhaseDeadlineCrossed();
-  const midnightContinuation = useActivePhaseMidnightContinuation();
 
-  // Track the previous value of `deadlineCrossed` so we only kick off the main
-  // chime on the false → true transition. Initializing with the current value
+  // Track the previous value of `deadlineCrossed` so we only kick off the chime
+  // schedule on the false → true transition. Initializing with the current value
   // avoids re-triggering the chime on first mount when the persisted state
   // already has the deadline crossed.
   const prevDeadlineCrossedRef = useRef(deadlineCrossed);
@@ -320,71 +309,37 @@ function usePomodoroSounds(): void {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const intro = new Audio(POMODORO_INTRO_WAV);
-    const main = new Audio(POMODORO_MAIN_WAV);
-    intro.volume = 0.3;
-    main.volume = 0.2;
-    intro.preload = "auto";
-    main.preload = "auto";
-    main.loop = true;
-    intro.load();
-    main.load();
-    introAudioRef.current = intro;
-    mainAudioRef.current = main;
+    const chime = new Audio(POMODORO_CHIME_MP3);
+    chime.volume = 0.8;
+    chime.preload = "auto";
+    chime.load();
+    chimeAudioRef.current = chime;
 
     return () => {
-      intro.pause();
-      main.pause();
-      intro.src = "";
-      main.src = "";
-      introAudioRef.current = null;
-      mainAudioRef.current = null;
+      chime.pause();
+      chime.src = "";
+      chimeAudioRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    if (runStartedAt == null) {
-      introPlayedForRunStartedAtRef.current = null;
-    }
-  }, [runStartedAt]);
-
-  useEffect(() => {
-    if (!running || paused || runStartedAt == null) return;
-    if (midnightContinuation) {
-      introPlayedForRunStartedAtRef.current = runStartedAt;
-      return;
-    }
-    if (secondsRemaining > 4 || secondsRemaining < 1) return;
-    if (introPlayedForRunStartedAtRef.current === runStartedAt) return;
-
-    introPlayedForRunStartedAtRef.current = runStartedAt;
-    const introEl = introAudioRef.current;
-    if (!introEl) return;
-    introEl.currentTime = 0;
-    void introEl.play().catch((err: unknown) => {
-      log.error("pomodoro: failed to play intro chime", err);
-    });
-  }, [running, paused, runStartedAt, secondsRemaining, midnightContinuation]);
-
-  useEffect(() => {
-    const mainEl = mainAudioRef.current;
-    if (!mainEl) return;
+    const chimeEl = chimeAudioRef.current;
     const justCrossed = deadlineCrossed && !prevDeadlineCrossedRef.current;
     prevDeadlineCrossedRef.current = deadlineCrossed;
-    if (justCrossed) {
-      const introEl = introAudioRef.current;
-      if (introEl) {
-        introEl.pause();
-        introEl.currentTime = 0;
-      }
-      mainEl.currentTime = 0;
-      void mainEl.play().catch((err: unknown) => {
-        log.error("pomodoro: failed to play main chime loop", err);
+    if (!chimeEl || !justCrossed) return;
+
+    const playChime = (): void => {
+      chimeEl.currentTime = 0;
+      void chimeEl.play().catch((err: unknown) => {
+        log.error("pomodoro: failed to play chime", err);
       });
-    } else if (!deadlineCrossed) {
-      mainEl.pause();
-      mainEl.currentTime = 0;
-    }
+    };
+
+    playChime();
+    const intervalId = window.setInterval(playChime, POMODORO_CHIME_REPEAT_MS);
+    return () => {
+      window.clearInterval(intervalId);
+    };
   }, [deadlineCrossed]);
 }
 
