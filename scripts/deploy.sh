@@ -3,7 +3,7 @@
 # Requires: clean npm install, git remote (default: origin) with push access.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 REMOTE="${DEPLOY_REMOTE:-origin}"
