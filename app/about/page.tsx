@@ -8,6 +8,14 @@ const description =
 export const metadata: Metadata = {
   title: "About DeepDash",
   description,
+  keywords: [
+    "DeepDash",
+    "about DeepDash",
+    "open source pomodoro timer",
+    "privacy-first productivity app",
+    "local-only productivity dashboard",
+    "no account no trackers",
+  ],
   alternates: { canonical: "/about" },
   openGraph: {
     title: "About DeepDash",

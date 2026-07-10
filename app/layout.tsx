@@ -16,8 +16,27 @@ const inter = localFont({
 const isDev = process.env.NODE_ENV === "development";
 
 export const metadata: Metadata = {
-  title: "DeepDash",
-  description: "Local-only productivity dashboard",
+  metadataBase: new URL("https://deepda.sh"),
+  title: "DeepDash — Pomodoro Timer, Work Log & To-Do List",
+  description:
+    "Free, local-only productivity dashboard with a Pomodoro timer, daily work log, and keyboard-friendly to-do list. No account, no trackers, runs entirely in your browser.",
+  keywords: [
+    "pomodoro timer",
+    "productivity dashboard",
+    "to-do list app",
+    "daily work log",
+    "focus timer",
+    "time management app",
+    "privacy-first productivity app",
+  ],
+  authors: [{ name: "Maciej Chałapuk", url: "https://github.com/mchalapuk" }],
+  creator: "Maciej Chałapuk",
+  robots: { index: true, follow: true },
+  openGraph: {
+    siteName: "DeepDash",
+    type: "website",
+    locale: "en_US",
+  },
 };
 
 export default function RootLayout({
