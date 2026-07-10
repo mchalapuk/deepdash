@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Container, Group, Stack } from "@mantine/core";
+import { Box, Container, Group, Stack, Space } from "@mantine/core";
 import {
   useCallback,
   useEffect,
@@ -13,6 +13,7 @@ import {
 import { usePhaseColor } from "@/lib/layout";
 import log from "@/lib/logger";
 
+import { AboutModalLink } from "./AboutModalLink";
 import { Pomodoro } from "./Pomodoro";
 import { TodaysTodo } from "./TodaysTodo";
 import { TodaysWork } from "./TodaysWork";
@@ -31,7 +32,7 @@ const SWIPE_AXIS_LOCK_PX = 8;
 const SWIPE_EDGE_RESISTANCE_DIVISOR = 3;
 const SWIPE_SNAP_TRANSITION = "transform 260ms cubic-bezier(0.22, 1, 0.36, 1)";
 
-export function DashboardShell() {
+export function DashboardShell({ initialAboutOpen = false }: { initialAboutOpen?: boolean }) {
   return (
     <Container
       component="main"
@@ -48,7 +49,7 @@ export function DashboardShell() {
         gap={0}
         align="start"
       >
-        <Group justify="space-between" w="100%">
+        <Group gap={8} w="100%">
           <Box
             component="a"
             href="http://deepda.sh/"
@@ -61,9 +62,19 @@ export function DashboardShell() {
           >
             <Logo height="100%" />
           </Box>
+          <Space style={{ flexGrow: 1 }} />
+          <Stack
+            h={0}
+            pr={6}
+            style={{ overflow:"visible", position: "relative", top: "4px" }}
+          >
+            <Space visibleFrom="md" style={{ height: "4px", overflow: "hidden", marginTop: "-14px" }} />
+            <AboutModalLink initialOpen={initialAboutOpen} />
+          </Stack>
+          <Space style={{ flexGrow: 1 }} visibleFrom="md" />
           <Group
             h={0}
-            pr={18}
+            pr={20}
             justify="end"
             style={{ overflow:"visible" }}
           >

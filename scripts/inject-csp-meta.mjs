@@ -21,18 +21,28 @@ function injectFirstInHead(html, csp) {
   return stripped.replace(/<head(\b[^>]*)>/i, `<head$1>${meta}`);
 }
 
+function collectHtmlFiles(dir) {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...collectHtmlFiles(full));
+    } else if (entry.isFile() && entry.name.endsWith(".html")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
 function main() {
   if (!fs.existsSync(OUT)) {
     console.warn("inject-csp-meta: out/ missing, skipping");
     process.exit(0);
   }
 
-  const files = ["index.html", "404.html", "_not-found.html"];
   const csp = CSP.production;
 
-  for (const name of files) {
-    const filePath = path.join(OUT, name);
-    if (!fs.existsSync(filePath)) continue;
+  for (const filePath of collectHtmlFiles(OUT)) {
     const html = fs.readFileSync(filePath, "utf8");
     if (!/<head(\b[^>]*)>/i.test(html)) continue;
     fs.writeFileSync(filePath, injectFirstInHead(html, csp), "utf8");
