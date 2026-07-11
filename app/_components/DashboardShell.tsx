@@ -56,9 +56,9 @@ export function DashboardShell({ initialAboutOpen = false }: { initialAboutOpen?
             href="http://deepda.sh/"
             display="block"
             w="min-content"
-            h={{ base: "70px", md: "100px" }}
+            h={{ base: "70px", md: "80px" }}
             mt={ -4 }
-            ml={{ base: -17, md: -20 }}
+            ml={{ base: -17, md: -19 }}
             mb={{ base: -32, md: -32 }}
           >
             <Logo height="100%" />
@@ -95,7 +95,7 @@ function DesktopColumns() {
     <Group
       gap={20}
       style={{
-        height: "calc(100dvh - 96px)",
+        height: "calc(100dvh - 76px)",
         width: "100%",
         minHeight: 0,
       }}

@@ -51,7 +51,7 @@ export function TodaysWork() {
   }, [activePhaseRun?.phase, activePhaseRun?.phaseStartedAtMs]);
 
   return (
-    <Stack gap={16} h="100%" w="100%" style={{ minHeight: 0, overflow: "hidden" }}>
+    <Stack gap={32} h="100%" w="100%" style={{ minHeight: 0, overflow: "hidden" }}>
       <Stack gap={12} style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
         <Box pl={12} pr={30}>
           <SessionRow

@@ -224,7 +224,7 @@ export function TodaysTodo() {
           </Stack>
         )}
       </ScrollArea>
-      <Box style={{ flexShrink: 0 }} pt={12}>
+      <Box style={{ flexShrink: 0 }} pt={24}>
         <TodoTrailingRow
           draftAPI={draftAPI}
           lastItem={lastItemForTrailingKeyboardNav}
