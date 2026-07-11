@@ -109,17 +109,18 @@ export function TodaysWork() {
           pb={10}
           style={{
             backgroundColor: "transparent",
-            opacity: 0.74,
           }}
         >
           <Group gap={4} wrap="nowrap" justify="space-between" pb={2}>
             <Group gap={10} wrap="nowrap" align="start" className="-mx-2.5 overflow-visible h-0 relative top-0.5">
-              <GithubBadge className="relative -top-3" />
-              <Box visibleFrom="md" className="relative -top-4">
+              <div className="opacity-74">
+                <GithubBadge className="relative -top-3" />
+              </div>
+              <Box visibleFrom="md" className="relative -top-4 opacity-80">
                 <AboutLink />
               </Box>
             </Group>
-            <Text size="sm" w="20.5%" c="dimmed">
+            <Text size="sm" w="20.5%" c="dimmed" opacity={0.74}>
               {hydrated ? formatDurationMs(totalMs): " "}
             </Text>
           </Group>

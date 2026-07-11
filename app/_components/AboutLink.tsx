@@ -2,6 +2,7 @@
 
 import { Anchor } from "@mantine/core";
 import { ABOUT_PATH, aboutModalActions } from "@/app/_stores/aboutModalStore";
+import { usePhaseColor } from "@/lib/layout";
 
 /**
  * "About" link. Shown next to the logo on mobile and next to the GitHub
@@ -9,11 +10,13 @@ import { ABOUT_PATH, aboutModalActions } from "@/app/_stores/aboutModalStore";
  * Opens `AboutModal`.
  */
 export function AboutLink({ className }: { className?: string }) {
+  const color = usePhaseColor();
+
   return (
     <Anchor
       href={ABOUT_PATH}
       onClick={aboutModalActions.openFromTriggerClick}
-      c="gray.7"
+      c={color}
       fw={400}
       fz="sm"
       aria-haspopup="dialog"
