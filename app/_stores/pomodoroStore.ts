@@ -29,6 +29,9 @@ let persistTail: Promise<void> = Promise.resolve();
 /** Latest `loadFromStorageAsync` invocation (for tests). */
 let lastPomodoroLoadPromise: Promise<void> = Promise.resolve();
 
+/** Overrides {@link currentTimeMs} in tests; real code never sets this. */
+let clockOverrideMs: (() => number) | null = null;
+
 const DEFAULT_WORK_MS = 25 * 60 * 1000;
 const DEFAULT_SHORT_MS = 5 * 60 * 1000;
 const DEFAULT_LONG_MS = 15 * 60 * 1000;
@@ -377,7 +380,7 @@ export const pomodoroActions = {
       if (r?.openPauseStartMs != null) {
         r.pauses.push({
           startMs: r.openPauseStartMs,
-          endMs: Date.now(),
+          endMs: currentTimeMs(),
         });
         r.openPauseStartMs = null;
       }
@@ -390,7 +393,7 @@ export const pomodoroActions = {
     if (!isRunning(pomodoroStore.activePhaseRun)) return;
     const r = pomodoroStore.activePhaseRun;
     if (r && r.openPauseStartMs === null) {
-      r.openPauseStartMs = Date.now();
+      r.openPauseStartMs = currentTimeMs();
     }
   },
   stopAndReset: function stopAndReset(): void {
@@ -431,8 +434,7 @@ export const pomodoroActions = {
     finalizeActivePhase();
 
     void persistTail.then(() => {
-      const day = localDayKey();
-      const next = current === "work" ? nextBreakType(day) : "work"; // always go to work after a break
+      const next = current === "work" ? nextBreakType() : "work"; // always go to work after a break
       applyPhaseWithFullDuration(next);
       beginRunningPhaseFromConfig();
     });
@@ -441,7 +443,7 @@ export const pomodoroActions = {
     if (!entryId) return;
     const entry = pomodoroStore.dayLog.entries.find((item) => item.id === entryId);
     if (!entry || entry.deletedAtMs != null) return;
-    entry.deletedAtMs = Date.now();
+    entry.deletedAtMs = currentTimeMs();
     enqueuePomodoroLogPersistSingle(entryId, pomodoroStore.dayKey, entry);
   },
 
@@ -485,7 +487,7 @@ function startPomodoroTimerEngine(
   onBreakPhaseCompleted?: (completedPhase: PomodoroPhase) => void,
 ): () => void {
   const id = window.setInterval(() => {
-    const nowMs = Date.now();
+    const nowMs = currentTimeMs();
     maybeSplitActivePhaseAtLocalMidnight(nowMs);
     abandonStalePausedWorkRunIfAny(nowMs);
 
@@ -522,7 +524,7 @@ function isPaused(activePhase: Snapshot<ActivePhaseRun> | null): boolean {
 
 /** Wall time when the current countdown reaches zero: running → run end; paused → frozen at pause; idle → now + phase duration. */
 function flipClockEndsAtMs(snap: PomodoroSnap): number {
-  return flipClockEndsAtMsAt(snap, Date.now());
+  return flipClockEndsAtMsAt(snap, currentTimeMs());
 }
 
 function phaseRunNeedsWallClock(
@@ -535,12 +537,12 @@ function phaseRunNeedsWallClock(
 function useWallNowMs(needsWallClock: boolean): number {
   const [nowMs, setNowMs] = useState(0);
   useLayoutEffect(() => {
-    /* Wall clock for countdown math; must not use Date.now() during render (react-hooks/purity). */
+    /* Wall clock for countdown math; must not call currentTimeMs() during render (react-hooks/purity). */
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync `nowMs` when subscription mode changes
-    setNowMs(Date.now());
+    setNowMs(currentTimeMs());
     if (!needsWallClock) return;
     const id = window.setInterval(
-      () => setNowMs(Date.now()),
+      () => setNowMs(currentTimeMs()),
       POMODORO_TIMER_INTERVAL_MS,
     );
     return () => window.clearInterval(id);
@@ -560,7 +562,7 @@ function logRecordToStored(r: PomodoroLogRecord): PomodoroLogEntryStored {
 }
 
 function finalizeActivePhase(): boolean {
-  return finalizeActivePhaseWithEndedAt(Date.now());
+  return finalizeActivePhaseWithEndedAt(currentTimeMs());
 }
 
 /**
@@ -656,7 +658,7 @@ function enqueuePomodoroLogPersistSingle(
 }
 
 async function hydrateTodayLogFromIndexedDb(): Promise<void> {
-  const today = localDayKey();
+  const today = localDayKey(new Date(currentTimeMs()));
   const rows = await getSortedPomodoroLogRecordsForDay(today);
   pomodoroStore.dayKey = today;
   pomodoroStore.dayLog = {
@@ -666,7 +668,7 @@ async function hydrateTodayLogFromIndexedDb(): Promise<void> {
 
 async function syncPomodoroCalendarDayIfNeededAsync(): Promise<void> {
   if (!pomodoroStore.hydrated) return;
-  const today = localDayKey();
+  const today = localDayKey(new Date(currentTimeMs()));
   if (pomodoroStore.dayKey === today) return;
   await flushPomodoroPersistToStorage();
   try {
@@ -692,7 +694,7 @@ function beginRunningPhaseFromConfig(): void {
   const intended = durationForPhase(pomodoroStore.phase, pomodoroStore.config);
   pomodoroStore.activePhaseRun = {
     phase: pomodoroStore.phase,
-    phaseStartedAtMs: Date.now(),
+    phaseStartedAtMs: currentTimeMs(),
     intendedDurationMs: intended,
     pauses: [],
     openPauseStartMs: null,
@@ -700,17 +702,20 @@ function beginRunningPhaseFromConfig(): void {
   };
 }
 
-/** After a work entry was just appended for `day`, choose short vs long break. */
-function nextBreakType(day: string): PomodoroPhase {
-  const n = countPomodoroSessions(day);
+/**
+ * Chooses short vs long break for whatever comes next. `dayLog.entries` only ever holds entries for
+ * {@link pomodoroStore.dayKey} (day rollover replaces the whole bucket), so today's count needs no
+ * date math or wall clock.
+ */
+function nextBreakType(): PomodoroPhase {
+  const n = countPomodoroSessions();
   if (n > 0 && n % WORK_BLOCKS_BEFORE_LONG_BREAK === 0) {
     return "longBreak";
   }
   return "shortBreak";
 }
 
-function countPomodoroSessions(day: string): number {
-  if (day !== pomodoroStore.dayKey) return 0;
+function countPomodoroSessions(): number {
   return pomodoroStore.dayLog.entries.filter((e) => e.phase === "work" && e.deletedAtMs == null).length;
 }
 
@@ -719,7 +724,7 @@ function countPomodoroSessions(day: string): number {
  * have taken (and finished) the next break in that time and not come back.
  */
 function pausedWorkAbandonThresholdMs(): number {
-  return durationForPhase(nextBreakType(localDayKey()), pomodoroStore.config);
+  return durationForPhase(nextBreakType(), pomodoroStore.config);
 }
 
 function isPausedWorkRunStale(
@@ -751,6 +756,11 @@ export function __runPausedWorkAbandonCheckForTests(nowMs: number): void {
 }
 
 // --- time-related helpers ---
+
+/** Store-wide "now"; use this instead of `Date.now()` so tests can control it via {@link __setPomodoroClockForTests}. */
+function currentTimeMs(): number {
+  return clockOverrideMs ? clockOverrideMs() : Date.now();
+}
 
 function durationForPhase(phase: PomodoroPhase, s: Snapshot<DurationSlice>): number {
   if (phase === "work") return s.workDurationMs;
@@ -866,7 +876,7 @@ function workMsFromEntry(e: Snapshot<PomodoroLoggedPhase>): number {
 
 function workMsFromActiveRun(r: ActivePhaseRun): number {
   if (r.phase !== "work") return 0;
-  const now = Date.now();
+  const now = currentTimeMs();
   const gross = now - r.phaseStartedAtMs;
   let paused = r.pauses.reduce((s, p) => s + (p.endMs - p.startMs), 0);
   if (r.openPauseStartMs != null) {
@@ -919,7 +929,7 @@ function reconcileActiveSessionAfterLoad(run: ActivePhaseRun): ActivePhaseRun | 
       phaseStartedAtMs: run.phaseStartedAtMs,
       intendedDurationMs: run.intendedDurationMs,
       pauses: run.pauses.map((p) => ({ startMs: p.startMs, endMs: p.endMs })),
-      openPauseStartMs: Date.now(),
+      openPauseStartMs: currentTimeMs(),
       deadlineCrossedNotified: run.deadlineCrossedNotified,
     };
   }
@@ -944,6 +954,11 @@ export function __partitionPausesForMidnightSplitForTests(
     firstSegment: buildFirstSegmentPausesForMidnightSplit(r, endedAtMs),
     continuation: buildContinuationPausesForMidnightSplit(r, startNextMs),
   };
+}
+
+/** @internal Replaces {@link currentTimeMs}'s source; pass `null` to restore the real clock. */
+export function __setPomodoroClockForTests(fn: (() => number) | null): void {
+  clockOverrideMs = fn;
 }
 
 export function __injectPomodoroMinimalStateForTests(patch: {
@@ -1037,7 +1052,7 @@ function clearActiveSessionStorage(): void {
 function pauseActiveSessionForUnload(): void {
   const r = pomodoroStore.activePhaseRun;
   if (r && r.openPauseStartMs === null) {
-    r.openPauseStartMs = Date.now();
+    r.openPauseStartMs = currentTimeMs();
   }
 }
 
@@ -1097,7 +1112,7 @@ function loadActiveSessionFromStorage(): void {
   }
   const run = reconcileActiveSessionAfterLoad(file.activePhaseRun);
   pomodoroStore.phase = file.phase;
-  if (!run || isPausedWorkRunStale(run, Date.now())) {
+  if (!run || isPausedWorkRunStale(run, currentTimeMs())) {
     pomodoroStore.activePhaseRun = null;
     clearActiveSessionStorage();
     lastActiveJson = "";
@@ -1122,7 +1137,7 @@ async function loadFromStorageAsync(): Promise<void> {
     await hydrateTodayLogFromIndexedDb();
   } catch (e: unknown) {
     log.error("pomodoro: failed to load config or work log from storage", e);
-    pomodoroStore.dayKey = localDayKey();
+    pomodoroStore.dayKey = localDayKey(new Date(currentTimeMs()));
     pomodoroStore.dayLog = { entries: [] };
   }
 
