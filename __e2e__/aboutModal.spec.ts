@@ -12,7 +12,12 @@ test("About link opens a modal over the live dashboard and masks the URL", async
   const dashboard = page.getByRole("main", { name: "Productivity tools" });
   await expect(dashboard).toBeVisible();
 
-  await page.getByRole("link", { name: "About DeepDash" }).click();
+  // "About" renders twice (mobile header link + desktop vertical link above
+  // the import/export controls); only one is visible per viewport.
+  await page
+    .getByRole("link", { name: "About DeepDash" })
+    .and(page.locator(":visible"))
+    .click();
 
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
@@ -37,7 +42,12 @@ test("browser Back closes the modal and restores the dashboard URL", async ({
   page,
 }) => {
   await page.goto("/");
-  await page.getByRole("link", { name: "About DeepDash" }).click();
+  // "About" renders twice (mobile header link + desktop vertical link above
+  // the import/export controls); only one is visible per viewport.
+  await page
+    .getByRole("link", { name: "About DeepDash" })
+    .and(page.locator(":visible"))
+    .click();
   await expect(page.getByRole("dialog")).toBeVisible();
 
   await page.goBack();

@@ -27,6 +27,7 @@ import {
 } from "@/app/_stores/pomodoroStore";
 import { usePhaseBackgroundColor } from "@/lib/layout";
 
+import { AboutLink } from "./AboutLink";
 import { GithubBadge } from "./GithubBadge";
 
 export function TodaysWork() {
@@ -112,7 +113,12 @@ export function TodaysWork() {
           }}
         >
           <Group gap={4} wrap="nowrap" justify="space-between" pb={2}>
-            <div className="-mx-2.5 overflow-visible h-0"><GithubBadge className="relative -top-3" /></div>
+            <Group gap={10} wrap="nowrap" align="start" className="-mx-2.5 overflow-visible h-0 relative top-0.5">
+              <GithubBadge className="relative -top-3" />
+              <Box visibleFrom="md" className="relative -top-4">
+                <AboutLink />
+              </Box>
+            </Group>
             <Text size="sm" w="20.5%" c="dimmed">
               {hydrated ? formatDurationMs(totalMs): " "}
             </Text>

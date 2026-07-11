@@ -13,7 +13,8 @@ import {
 import { usePhaseColor } from "@/lib/layout";
 import log from "@/lib/logger";
 
-import { AboutModalLink } from "./AboutModalLink";
+import { AboutLink } from "./AboutLink";
+import { AboutModal } from "./AboutModal";
 import { Pomodoro } from "./Pomodoro";
 import { TodaysTodo } from "./TodaysTodo";
 import { TodaysWork } from "./TodaysWork";
@@ -67,20 +68,21 @@ export function DashboardShell({ initialAboutOpen = false }: { initialAboutOpen?
             h={0}
             pr={6}
             style={{ overflow:"visible", position: "relative", top: "4px" }}
+            hiddenFrom="md"
           >
-            <Space visibleFrom="md" style={{ height: "4px", overflow: "hidden", marginTop: "-14px" }} />
-            <AboutModalLink initialOpen={initialAboutOpen} />
+            <AboutLink />
           </Stack>
-          <Space style={{ flexGrow: 1 }} visibleFrom="md" />
           <Group
             h={0}
             pr={20}
             justify="end"
+            hiddenFrom="md"
             style={{ overflow:"visible" }}
           >
             <DataImportExport layout="horizontal" />
           </Group>
         </Group>
+        <AboutModal initialOpen={initialAboutOpen} />
         <MobileColumns />
         <DesktopColumns />
       </Stack>
