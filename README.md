@@ -2,9 +2,9 @@
 
 > A local-only, privacy-oriented, feature-rich productivity dashboard.
 
-🟢 **Live on [https://deepda.sh/](https://deepda.sh/) and free for everyone to use. Full data privacy. No Ads. No trackers.**
+🟢 **Live on [https://deepda.sh/](https://deepda.sh/) and free for everyone to use. No Ads. No trackers.**
 
-<img width="893" height="810" alt="Screenshot 2026-07-08 at 07 28 03" src="https://github.com/user-attachments/assets/9684d03a-a7a9-4955-98fb-a03a62f2a4df" />
+<img width="887" height="817" alt="Screenshot 2026-07-13 at 06 17 36" src="https://github.com/user-attachments/assets/6727a680-a852-4ec9-bc72-79111292d2ae" />
 
 ## Features
 
