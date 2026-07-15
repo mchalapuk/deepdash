@@ -7,8 +7,8 @@ import {
   TODO_BACKLOG_STORAGE_KEY,
   TODO_DAY_STORAGE_KEY_PREFIX,
   TODO_IDB_LEGACY_MIGRATED_KEY,
-} from "@/lib/persistKeys";
-import log from "@/lib/logger";
+} from "@/app/lib/persistKeys";
+import log from "@/app/lib/logger";
 
 // --- exported constants (importance) ---
 

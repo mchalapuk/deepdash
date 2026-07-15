@@ -4,7 +4,7 @@ import { Badge } from "@mantine/core";
 
 import { IconBrandGithub } from "@tabler/icons-react";
 
-import { usePhaseColor } from "@/lib/layout";
+import { usePhaseColor } from "@/app/lib/pomodoroLayout";
 
 const githubLabel = "Give us a Star on GitHub";
 const repoUrl = "https://github.com/mchalapuk/deepdash";

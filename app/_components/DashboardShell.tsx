@@ -10,8 +10,8 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
-import { usePhaseColor } from "@/lib/layout";
-import log from "@/lib/logger";
+import { usePhaseColor } from "@/app/lib/pomodoroLayout";
+import log from "@/app/lib/logger";
 
 import { AboutLink } from "./AboutLink";
 import { AboutModal } from "./AboutModal";

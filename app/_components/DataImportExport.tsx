@@ -9,8 +9,8 @@ import {
   downloadDeepdashJson,
   formatDeepdashImportErrorsForUser,
   runDeepdashJsonImportFromText,
-} from "@/lib/dataExport";
-import log from "@/lib/logger";
+} from "@/app/lib/dataExport";
+import log from "@/app/lib/logger";
 import { IconDownload, IconUpload } from "@tabler/icons-react";
 
 const exportDataLabel = "Export data";

@@ -114,7 +114,7 @@ Combine subcomponents, containers, expandable slots, and hooks as needed.
 
 - When props are **non-trivial** (many fields, optional callbacks/refs, or **JSDoc on individual props**), declare a **named `type` or `interface`** **immediately above** the component (e.g. `type WorldClockCardProps = { … }` then `function WorldClockCard(props: WorldClockCardProps)`).
 
-- Reuse **domain types** from stores or shared modules instead of duplicating unions (e.g. **`PomodoroPhase`** from **`@/lib/layout`**, re-exported from **`@/app/_stores/pomodoroStore`** for store-centric imports).
+- Reuse **domain types** from stores or shared modules instead of duplicating unions (e.g. **`PomodoroPhase`** from **`@/app/lib/pomodoroLayout`**, re-exported from **`@/app/_stores/pomodoroStore`** for store-centric imports).
 
 ### Passing props
 
@@ -129,7 +129,7 @@ Combine subcomponents, containers, expandable slots, and hooks as needed.
 - Express layout with **Mantine props** first (`gap`, `align`, `justify`, `wrap`, `w`, `py`, `radius`, `variant`, `size`, `c`, …).
 - Use **`style={{ ... }}`** for one-off values (e.g. fixed widths, rgba backgrounds, flex quirks) that are not covered by props.
 - Use **`className`** with **Tailwind** utilities where they are concise and stable (e.g. `flex`, `min-w-0`, `invisible`, `pointer-events-none`). Mixing Mantine + Tailwind in one tree is acceptable here.
-- **Primary action color (pomodoro phase):** for the main **`Button`** `variant="filled"` in the pomodoro panel and for **primary-style** controls elsewhere (e.g. **`ActionIcon`** `variant="light"` used as the main “add” affordance), set **`color={getColorFromPhase(phase)}`** from **`@/lib/layout`**, with **`phase`** from **`useCurrentPhase()`** in **`@/app/_stores/pomodoroStore`**. Related icon-only controls in the same control group (e.g. cancel next to an expanded search) may use the same **`color`** so accents stay aligned with the timer phase.
+- **Primary action color (pomodoro phase):** for the main **`Button`** `variant="filled"` in the pomodoro panel and for **primary-style** controls elsewhere (e.g. **`ActionIcon`** `variant="light"` used as the main “add” affordance), set **`color={getColorFromPhase(phase)}`** from **`@/app/lib/pomodoroLayout`**, with **`phase`** from **`useCurrentPhase()`** in **`@/app/_stores/pomodoroStore`**. Related icon-only controls in the same control group (e.g. cancel next to an expanded search) may use the same **`color`** so accents stay aligned with the timer phase.
 
 ### State and side effects
 

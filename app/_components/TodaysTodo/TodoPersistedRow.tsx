@@ -29,7 +29,7 @@ import {
   type TodoItem,
   type TodoListKind,
 } from "@/app/_stores/todoStore";
-import log from "@/lib/logger";
+import log from "@/app/lib/logger";
 
 import { isSplitEnter, parseTodoTextSegments } from "./todoRowHelpers";
 import {

@@ -25,7 +25,7 @@ import {
   useTodayPomodoroDaySlice,
   useTodayWorkMsDisplay,
 } from "@/app/_stores/pomodoroStore";
-import { usePhaseBackgroundColor } from "@/lib/layout";
+import { usePhaseBackgroundColor } from "@/app/lib/pomodoroLayout";
 
 import { AboutLink } from "./AboutLink";
 import { GithubBadge } from "./GithubBadge";

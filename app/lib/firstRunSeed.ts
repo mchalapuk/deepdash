@@ -3,14 +3,14 @@ import {
   applyDeepdashImportWithRollback,
   CURRENT_DEEPDASH_EXPORT_VERSION,
   type DeepdashExportLatest,
-} from "@/lib/dataExport";
-import log from "@/lib/logger";
+} from "@/app/lib/dataExport";
+import log from "@/app/lib/logger";
 import {
   FIRST_RUN_SEED_HANDLED_KEY,
   migrateLegacyPersistKeysOnce,
   POMODORO_CONFIG_KEY,
   TODO_BACKLOG_STORAGE_KEY,
-} from "@/lib/persistKeys";
+} from "@/app/lib/persistKeys";
 
 /**
  * Demo bundle for a blank browser profile. Pomodoro uses defaults (empty slice migrates to defaults).

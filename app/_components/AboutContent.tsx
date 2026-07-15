@@ -2,7 +2,7 @@
 
 import { Anchor, List, Stack, Text, Title } from "@mantine/core";
 import { IconCheck } from "@tabler/icons-react";
-import { usePhaseColor } from "@/lib/layout";
+import { usePhaseColor } from "@/app/lib/pomodoroLayout";
 
 const LIVE_URL = "https://deepda.sh/";
 const REPO_URL = "https://github.com/mchalapuk/deepdash";

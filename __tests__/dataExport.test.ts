@@ -15,10 +15,10 @@ import {
   runDeepdashJsonImportFromText,
   tryMigrateDeepdashBundle,
   type DeepdashExportLatest,
-} from "@/lib/dataExport";
+} from "@/app/lib/dataExport";
 import { migrateTodoSliceToLatest } from "@/app/_stores/todoStore";
-import { __resetPomodoroDatabaseForTests } from "@/lib/pomodoroIndexedDb";
-import { __resetTodoDatabaseForTests } from "@/lib/todoIndexedDb";
+import { __resetPomodoroDatabaseForTests } from "@/app/lib/pomodoroIndexedDb";
+import { __resetTodoDatabaseForTests } from "@/app/lib/todoIndexedDb";
 
 /** Asserts migration succeeds; mirrors the former `migrateImportToLatest` helper for tests. */
 function expectMigratedBundle(raw: unknown): DeepdashExportLatest {

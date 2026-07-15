@@ -5,11 +5,11 @@ import {
   collectPomodoroLogsForExport,
   getSortedPomodoroLogRecordsForDay,
   migrateLegacyPomodoroLocalStorageToIndexedDb,
-} from "@/lib/pomodoroIndexedDb";
+} from "@/app/lib/pomodoroIndexedDb";
 import {
   POMODORO_IDB_LEGACY_MIGRATED_KEY,
   POMODORO_LOGS_KEY,
-} from "@/lib/persistKeys";
+} from "@/app/lib/persistKeys";
 
 describe("pomodoroIndexedDb", () => {
   beforeEach(async () => {

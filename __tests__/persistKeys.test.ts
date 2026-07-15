@@ -5,7 +5,7 @@ import {
   migrateLegacyPersistKeysOnce,
   POMODORO_CONFIG_KEY,
   TODO_DAY_STORAGE_KEY_PREFIX,
-} from "@/lib/persistKeys";
+} from "@/app/lib/persistKeys";
 
 describe("migrateLegacyPersistKeysOnce", () => {
   beforeEach(() => {

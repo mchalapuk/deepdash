@@ -10,7 +10,7 @@ import {
 
 import { Box } from "@mantine/core";
 
-import { usePhaseBackgroundColor } from "@/lib/layout";
+import { usePhaseBackgroundColor } from "@/app/lib/pomodoroLayout";
 import { useTodoList } from "@/app/_stores/todoStore";
 
 import { TaskListTitle } from "./TaskListTitle";

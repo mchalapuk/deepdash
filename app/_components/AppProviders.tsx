@@ -3,8 +3,8 @@
 import { MantineProvider, createTheme } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import { useEffect, useLayoutEffect, useMemo } from "react";
-import { maybeApplyFirstRunSeedBundle } from "@/lib/firstRunSeed";
-import log from "@/lib/logger";
+import { maybeApplyFirstRunSeedBundle } from "@/app/lib/firstRunSeed";
+import log from "@/app/lib/logger";
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   const theme = useMemo(

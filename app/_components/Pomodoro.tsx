@@ -17,8 +17,8 @@ import {
   IconPlayerSkipForward,
 } from "@tabler/icons-react";
 import { useEffect, useRef } from "react";
-import { usePhaseColor, type PomodoroPhase } from "@/lib/layout";
-import log from "@/lib/logger";
+import { usePhaseColor, type PomodoroPhase } from "@/app/lib/pomodoroLayout";
+import log from "@/app/lib/logger";
 import {
   pomodoroActions,
   useActivePhaseDeadlineCrossed,

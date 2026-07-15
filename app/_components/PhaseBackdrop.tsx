@@ -1,6 +1,6 @@
 "use client";
 
-import { usePhaseBackgroundColor } from "@/lib/layout";
+import { usePhaseBackgroundColor } from "@/app/lib/pomodoroLayout";
 
 export function PhaseBackdrop({ children }: { children: React.ReactNode }) {
   const backgroundColor = usePhaseBackgroundColor();

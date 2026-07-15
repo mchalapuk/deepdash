@@ -9,7 +9,7 @@ import {
   todoActions,
   type TodoExportV3,
 } from "@/app/_stores/todoStore";
-import log from "@/lib/logger";
+import log from "@/app/lib/logger";
 
 /** Bump when the **bundle** layout changes (not necessarily every slice bump). */
 export const CURRENT_DEEPDASH_EXPORT_VERSION = 5 as const;

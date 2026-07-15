@@ -2,7 +2,7 @@
 
 import { Anchor } from "@mantine/core";
 import { ABOUT_PATH, aboutModalActions } from "@/app/_stores/aboutModalStore";
-import { usePhaseColor } from "@/lib/layout";
+import { usePhaseColor } from "@/app/lib/pomodoroLayout";
 
 /**
  * "About" link. Shown next to the logo on mobile and next to the GitHub

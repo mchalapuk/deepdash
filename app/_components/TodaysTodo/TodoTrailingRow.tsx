@@ -12,8 +12,8 @@ import {
 } from "react";
 
 import { todoActions, type TodoItem } from "@/app/_stores/todoStore";
-import { usePhaseColor } from "@/lib/layout";
-import log from "@/lib/logger";
+import { usePhaseColor } from "@/app/lib/pomodoroLayout";
+import log from "@/app/lib/logger";
 
 import { isSplitEnter } from "./todoRowHelpers";
 import {

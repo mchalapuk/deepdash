@@ -1,13 +1,13 @@
 import { useLayoutEffect, useState } from "react";
 import { proxy, useSnapshot, type Snapshot } from "valtio";
 import { subscribe } from "valtio/vanilla";
-import type { PomodoroPhase } from "@/lib/layout";
-import log from "@/lib/logger";
+import type { PomodoroPhase } from "@/app/lib/pomodoroLayout";
+import log from "@/app/lib/logger";
 import {
   migrateLegacyPersistKeysOnce,
   POMODORO_ACTIVE_SESSION_KEY,
   POMODORO_CONFIG_KEY,
-} from "@/lib/persistKeys";
+} from "@/app/lib/persistKeys";
 import {
   applyPomodoroLogWrites,
   collectPomodoroLogsForExport,
@@ -16,7 +16,7 @@ import {
   replaceAllPomodoroLogsFromImport,
   type PomodoroLogRecord,
   type PomodoroLogsExport,
-} from "@/lib/pomodoroIndexedDb";
+} from "@/app/lib/pomodoroIndexedDb";
 
 export type { PomodoroPhase };
 

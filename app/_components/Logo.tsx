@@ -1,6 +1,6 @@
 "use client";
 
-import { usePhaseColor } from "@/lib/layout";
+import { usePhaseColor } from "@/app/lib/pomodoroLayout";
 
 export function Logo({ height = "100px", className }: { height?: string, className?: string }) {
   const color = usePhaseColor();

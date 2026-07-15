@@ -1,6 +1,6 @@
 import { localDayKey } from "@/app/_stores/pomodoroStore";
-import { buildFirstRunSeedBundle } from "@/lib/firstRunSeed";
-import { tryMigrateDeepdashBundle } from "@/lib/dataExport";
+import { buildFirstRunSeedBundle } from "@/app/lib/firstRunSeed";
+import { tryMigrateDeepdashBundle } from "@/app/lib/dataExport";
 
 describe("firstRunSeed bundle", () => {
   it("migrates cleanly and matches expected demo content", () => {

@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-import { TODO_BACKLOG_STORAGE_KEY, TODO_DAY_STORAGE_KEY_PREFIX } from "@/lib/persistKeys";
+import { TODO_BACKLOG_STORAGE_KEY, TODO_DAY_STORAGE_KEY_PREFIX } from "@/app/lib/persistKeys";
 
 describe("todo day rollover", () => {
   beforeEach(() => {

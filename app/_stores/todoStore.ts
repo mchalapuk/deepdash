@@ -1,12 +1,12 @@
 import { proxy, useSnapshot } from "valtio";
 
 import { localDayKey } from "@/app/_stores/pomodoroStore";
-import log from "@/lib/logger";
+import log from "@/app/lib/logger";
 import {
   migrateLegacyPersistKeysOnce,
   TODO_BACKLOG_STORAGE_KEY,
   TODO_DAY_STORAGE_KEY_PREFIX,
-} from "@/lib/persistKeys";
+} from "@/app/lib/persistKeys";
 import {
   applyTodoTaskWrites,
   collectTodoTasksForExport,
@@ -17,7 +17,7 @@ import {
   TODO_IDB_BACKLOG_DAY,
   type TodoItemWithRank,
   type TodoTaskRecordInput,
-} from "@/lib/todoIndexedDb";
+} from "@/app/lib/todoIndexedDb";
 
 const DAY_CHECK_INTERVAL_MS = 1000;
 const TEXT_PERSIST_DEBOUNCE_MS = 1000;

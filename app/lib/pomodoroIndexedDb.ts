@@ -6,9 +6,9 @@
 import {
   POMODORO_IDB_LEGACY_MIGRATED_KEY,
   POMODORO_LOGS_KEY,
-} from "@/lib/persistKeys";
-import type { PomodoroPhase } from "@/lib/layout";
-import log from "@/lib/logger";
+} from "@/app/lib/persistKeys";
+import type { PomodoroPhase } from "@/app/lib/pomodoroLayout";
+import log from "@/app/lib/logger";
 
 // --- exported constants (importance) ---
 
