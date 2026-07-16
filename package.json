@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/inject-csp-meta.mjs",
+    "build": "next build && node .scripts/inject-csp-meta.mjs",
     "start": "next start",
     "lint": "eslint --config .config/eslint.config.mjs",
     "test": "jest --config .config/jest.config.cjs",
-    "test:e2e": "playwright test --config .config/playwright.config.ts"
+    "test:e2e": "playwright test --config .config/playwright.config.ts",
+    "deploy": "bash .scripts/deploy.sh"
   },
   "dependencies": {
     "@mantine/core": "^9.1.1",

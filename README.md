@@ -39,7 +39,7 @@ A restrictive CSP is intended to block cross-origin scripts, styles, fonts, and 
 | `npm run start` | Runs `next start` (see **Static deploy** below) |
 | `npm run lint` | ESLint |
 | `npm test` | Jest (import/export migrations and related unit tests) |
-| `./scripts/deploy.sh` | Production build, then force-push `out/` to the remote **`pages`** branch (see **Deploy to `pages` branch** below) |
+| `npm run deploy` | Production build, then force-push `out/` to the remote **`pages`** branch (see **Deploy to `pages` branch** below) |
 
 ### Static deploy and offline work
 

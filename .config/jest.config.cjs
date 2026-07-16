@@ -2,7 +2,7 @@
 module.exports = {
   rootDir: "..",
   testEnvironment: "node",
-  setupFilesAfterEnv: ["<rootDir>/scripts/jest.setup.cjs"],
+  setupFilesAfterEnv: ["<rootDir>/.scripts/jest.setup.cjs"],
   roots: ["<rootDir>"],
   testMatch: ["**/__tests__/**/*.test.ts"],
   moduleNameMapper: {
