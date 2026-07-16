@@ -1,5 +1,5 @@
 /* Offline shell: populate cache from network, serve cached same-origin GETs when offline */
-const CACHE = "deepdash-v1";
+const CACHE = "deepdash-v2";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();

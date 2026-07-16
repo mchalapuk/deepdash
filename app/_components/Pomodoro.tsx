@@ -20,8 +20,15 @@ import { useEffect, useRef } from "react";
 import { usePhaseColor, type PomodoroPhase } from "@/app/lib/pomodoroLayout";
 import log from "@/app/lib/logger";
 import {
+  cancelScheduledBreakEndChime,
+  finalizeScheduledBreakEndChime,
+  scheduleBreakEndChimeAt,
+  unlockPomodoroAudio,
+} from "@/app/lib/pomodoroAudio";
+import {
   pomodoroActions,
   useActivePhaseDeadlineCrossed,
+  useActiveRunningBreakEndsAtMs,
   useCurrentPhase,
   useCurrentPhaseExpired,
   useFlipSecondsRemaining,
@@ -33,12 +40,11 @@ import { FlipTimer } from "./FlipTimer";
 
 const POMODORO_CHIME_MP3 = "/chime.mp3";
 const POMODORO_CHIME_REPEAT_MS = 5 * 60 * 1000;
-const POMODORO_SILENCE_MP3 = "/1sec_silence.mp3";
 
 export function Pomodoro() {
   const [phase, running, paused] = usePomodoroMechanics();
   usePomodoroSounds();
-  usePausePomodoroOnAudioPause();
+  useScheduledBreakEndChime();
 
   return (
     <Paper
@@ -300,7 +306,7 @@ function usePomodoroMechanics(): [PomodoroPhase, boolean, boolean] {
     return pomodoroActions.init({
       onPhaseDeadlineCrossed: phaseCompleteNotification,
       onBreakPhaseCompleted: (completed) => {
-        playChimeOnce();
+        if (!finalizeScheduledBreakEndChime()) playChimeOnce();
         phaseCompleteNotification(completed);
       },
     });
@@ -365,40 +371,35 @@ function usePomodoroSounds(): void {
   }, [deadlineCrossed]);
 }
 
-function usePausePomodoroOnAudioPause(): void {
-  // Browsers stop all audio playback when the laptop lid is closed (and in some
-  // similar suspend-like situations). We piggy-back on that by looping a silent
-  // track for the duration of an active phase: if the audio gets paused while
-  // the phase is still supposed to be running, we treat it as a signal to pause
-  // the pomodoro session too.
-  // This approach might generate some false positives but testing suggests that
-  // much less than other tried solutions which were based on detecing time drift.
-  const running = useIsRunning();
-  const paused = useIsPaused();
+/**
+ * Schedules the break-end chime on the Web Audio clock as soon as a break starts running, so it
+ * fires on time even in a hidden/throttled tab. Also installs a one-time gesture listener to unlock
+ * the AudioContext (autoplay policy) — needed after a page reload mid-phase, since starting a phase
+ * by click already carries a gesture.
+ */
+function useScheduledBreakEndChime(): void {
+  const endsAtMs = useActiveRunningBreakEndsAtMs();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!running || paused) return;
 
-    const audio = new Audio(POMODORO_SILENCE_MP3);
-    audio.loop = true;
-    audio.preload = "auto";
-
-    const onAudioPause = (): void => {
-      pomodoroActions.pause();
-    };
-    audio.addEventListener("pause", onAudioPause);
-
-    void audio.play().catch((err: unknown) => {
-      log.error("pomodoro: failed to play silence loop", err);
-    });
+    const onFirstGesture = (): void => unlockPomodoroAudio();
+    window.addEventListener("pointerdown", onFirstGesture, { once: true, capture: true });
+    window.addEventListener("keydown", onFirstGesture, { once: true, capture: true });
 
     return () => {
-      audio.removeEventListener("pause", onAudioPause);
-      audio.pause();
-      audio.src = "";
+      window.removeEventListener("pointerdown", onFirstGesture, { capture: true });
+      window.removeEventListener("keydown", onFirstGesture, { capture: true });
     };
-  }, [running, paused]);
+  }, []);
+
+  useEffect(() => {
+    if (endsAtMs == null) return;
+    scheduleBreakEndChimeAt(endsAtMs);
+    return () => {
+      cancelScheduledBreakEndChime();
+    };
+  }, [endsAtMs]);
 }
 
 /** One-off chime for a break ending — no preload/ref needed since it fires at most once per run. */

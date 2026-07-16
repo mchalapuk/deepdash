@@ -3,6 +3,7 @@ import { proxy, useSnapshot, type Snapshot } from "valtio";
 import { subscribe } from "valtio/vanilla";
 import type { PomodoroPhase } from "@/app/lib/pomodoroLayout";
 import log from "@/app/lib/logger";
+import { readAudioClockSleepDriftMs } from "@/app/lib/pomodoroAudio";
 import {
   migrateLegacyPersistKeysOnce,
   POMODORO_ACTIVE_SESSION_KEY,
@@ -32,6 +33,9 @@ let lastPomodoroLoadPromise: Promise<void> = Promise.resolve();
 /** Overrides {@link currentTimeMs} in tests; real code never sets this. */
 let clockOverrideMs: (() => number) | null = null;
 
+/** Overrides the sleep-drift reader driving retroactive pause in tests; real code never sets this. */
+let sleepDriftProvider: () => number = readAudioClockSleepDriftMs;
+
 const DEFAULT_WORK_MS = 25 * 60 * 1000;
 const DEFAULT_SHORT_MS = 5 * 60 * 1000;
 const DEFAULT_LONG_MS = 15 * 60 * 1000;
@@ -44,6 +48,12 @@ const MAX_WORK_MINUTES = 120;
 const MAX_BREAK_MINUTES = 60;
 
 const POMODORO_TIMER_INTERVAL_MS = 100;
+
+/**
+ * Drift between wall time and the audio clock above this is treated as a real system sleep/suspend
+ * (retroactively pauses the active run) rather than ordinary throttled-but-alive ticking.
+ */
+const SLEEP_DRIFT_PAUSE_THRESHOLD_MS = 10_000;
 
 /** Flip digit animation lags real time; display leads by this much so flips line up with wall seconds. */
 const FLIP_DISPLAY_LEAD_MS = 300;
@@ -240,6 +250,13 @@ export function useActivePhaseDeadlineCrossed(): boolean {
 /** True when the active run is the post-midnight segment of a calendar-day split. */
 export function useActivePhaseMidnightContinuation(): boolean {
   return useSnapshot(pomodoroStore).activePhaseRun?.midnightSplitContinuation === true;
+}
+
+/** Wall-clock end time while a break is actively running; null otherwise. Feeds break-end chime scheduling. */
+export function useActiveRunningBreakEndsAtMs(): number | null {
+  const r = useSnapshot(pomodoroStore).activePhaseRun;
+  if (!r || r.phase === "work" || !isRunning(r)) return null;
+  return runEndWallMs(r);
 }
 
 type PomodoroSnap = {
@@ -482,34 +499,76 @@ export const pomodoroActions = {
   },
 };
 
+/**
+ * One engine step: retroactive sleep pause, midnight split, stale-pause abandonment, then deadline
+ * detection. Driven both by the foreground interval (precise while the tab is visible) and by
+ * {@link startPomodoroTimerEngine}'s worker (unthrottled while the tab is hidden).
+ */
+function runEngineTick(
+  onPhaseDeadlineCrossed?: (completedPhase: PomodoroPhase) => void,
+  onBreakPhaseCompleted?: (completedPhase: PomodoroPhase) => void,
+): void {
+  const nowMs = currentTimeMs();
+
+  const sleepMs = sleepDriftProvider();
+  if (sleepMs > SLEEP_DRIFT_PAUSE_THRESHOLD_MS) {
+    pauseRetroactivelyAt(nowMs - sleepMs);
+  }
+
+  maybeSplitActivePhaseAtLocalMidnight(nowMs);
+  abandonStalePausedWorkRunIfAny(nowMs);
+
+  const r = pomodoroStore.activePhaseRun;
+  const running = isRunning(r);
+
+  if (running && r && nowMs >= flipClockEndsAtMs(pomodoroStore)) {
+    const completedPhase = r.phase;
+    if (completedPhase === "work") {
+      if (!r.deadlineCrossedNotified) {
+        r.deadlineCrossedNotified = true;
+        onPhaseDeadlineCrossed?.(completedPhase);
+      }
+    } else {
+      // Breaks don't count up waiting for the user: finalize and drop straight into idle work.
+      transitionBreakToIdleWork();
+      onBreakPhaseCompleted?.(completedPhase);
+    }
+  }
+}
+
+/** Backdates the active run's pause start (e.g. after detecting a system sleep), like `pause()` but retroactive. */
+function pauseRetroactivelyAt(startMs: number): void {
+  const r = pomodoroStore.activePhaseRun;
+  if (!r || !isRunning(r)) return;
+  r.openPauseStartMs = Math.max(startMs, r.phaseStartedAtMs);
+}
+
 function startPomodoroTimerEngine(
   onPhaseDeadlineCrossed?: (completedPhase: PomodoroPhase) => void,
   onBreakPhaseCompleted?: (completedPhase: PomodoroPhase) => void,
 ): () => void {
-  const id = window.setInterval(() => {
-    const nowMs = currentTimeMs();
-    maybeSplitActivePhaseAtLocalMidnight(nowMs);
-    abandonStalePausedWorkRunIfAny(nowMs);
+  const tick = (): void => runEngineTick(onPhaseDeadlineCrossed, onBreakPhaseCompleted);
 
-    const r = pomodoroStore.activePhaseRun;
-    const running = isRunning(r);
+  const id = window.setInterval(tick, POMODORO_TIMER_INTERVAL_MS);
 
-    if (running && r && nowMs >= flipClockEndsAtMs(pomodoroStore)) {
-      const completedPhase = r.phase;
-      if (completedPhase === "work") {
-        if (!r.deadlineCrossedNotified) {
-          r.deadlineCrossedNotified = true;
-          onPhaseDeadlineCrossed?.(completedPhase);
-        }
-      } else {
-        // Breaks don't count up waiting for the user: finalize and drop straight into idle work.
-        transitionBreakToIdleWork();
-        onBreakPhaseCompleted?.(completedPhase);
-      }
-    }
-  }, POMODORO_TIMER_INTERVAL_MS);
+  // Dedicated-worker timers aren't subject to background-tab throttling, so this keeps deadline
+  // detection (and the notification/chime it triggers) on time even in a hidden tab.
+  let worker: Worker | null = null;
+  try {
+    worker = new Worker("/pomodoro-timer.worker.js");
+    worker.onmessage = tick;
+    worker.onerror = (err) => {
+      log.warn("pomodoro: timer worker error", err);
+    };
+  } catch (err) {
+    log.warn("pomodoro: failed to start timer worker; relying on foreground interval only", err);
+    worker = null;
+  }
 
-  return () => window.clearInterval(id);
+  return () => {
+    window.clearInterval(id);
+    worker?.terminate();
+  };
 }
 
 /** Countdown is actively ticking (run exists and not in a pause). */
@@ -959,6 +1018,16 @@ export function __partitionPausesForMidnightSplitForTests(
 /** @internal Replaces {@link currentTimeMs}'s source; pass `null` to restore the real clock. */
 export function __setPomodoroClockForTests(fn: (() => number) | null): void {
   clockOverrideMs = fn;
+}
+
+/** @internal Replaces the sleep-drift reader; pass `null` to restore {@link readAudioClockSleepDriftMs}. */
+export function __setSleepDriftProviderForTests(fn: (() => number) | null): void {
+  sleepDriftProvider = fn ?? readAudioClockSleepDriftMs;
+}
+
+/** @internal Runs one {@link runEngineTick} step directly, without the interval/worker plumbing. */
+export function __runPomodoroEngineTickForTests(options?: PomodoroInitOptions): void {
+  runEngineTick(options?.onPhaseDeadlineCrossed, options?.onBreakPhaseCompleted);
 }
 
 export function __injectPomodoroMinimalStateForTests(patch: {
