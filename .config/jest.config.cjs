@@ -1,5 +1,6 @@
 /** @type {import("jest").Config} */
 module.exports = {
+  rootDir: "..",
   testEnvironment: "node",
   setupFilesAfterEnv: ["<rootDir>/scripts/jest.setup.cjs"],
   roots: ["<rootDir>"],

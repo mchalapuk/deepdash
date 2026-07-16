@@ -5,7 +5,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { CSP } from "../csp.config.mjs";
+import { CSP } from "../.config/csp.config.mjs";
 
 const OUT = path.join(import.meta.dirname, "..", "out");
 const CSP_META_RE =
