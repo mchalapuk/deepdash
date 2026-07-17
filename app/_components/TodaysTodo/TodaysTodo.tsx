@@ -156,6 +156,13 @@ export function TodaysTodo() {
     });
   }, [scrollToBacklogHeader, viewportRef, backlogItems, focusAPI]);
 
+  /** Hide the sticky "Today's tasks" header when Today is empty but Backlog has items. */
+  const showTodaysTasksHeader = !(
+    trailingTargetList === "today" &&
+    todayItems.length === 0 &&
+    backlogItems.length > 0
+  );
+
   return (
     <Stack
       gap={0}
@@ -164,10 +171,12 @@ export function TodaysTodo() {
       className="min-h-0"
       style={{ overflow: "hidden" }}
     >
-      <TodaysTodoSectionTitle
-        trailingTargetList={trailingTargetList}
-        onClick={onSectionTitleClick}
-      />
+      {showTodaysTasksHeader ? (
+        <TodaysTodoSectionTitle
+          trailingTargetList={trailingTargetList}
+          onClick={onSectionTitleClick}
+        />
+      ) : null}
       <ScrollArea
         type="scroll"
         viewportRef={viewportRef}
@@ -195,14 +204,19 @@ export function TodaysTodo() {
                 dragAPI={dragAPIToday}
               />
             ))}
+            {todayItems.length === 0 && backlogItems.length === 0 ? (
+              <TodaysTodoEmptyState />
+            ) : null}
             <Box ref={backlogBlockMeasureRef}>
-              <TaskListTitle
-                ref={backlogSectionRef}
-                onClick={onBacklogHeadingClick}
-                title="Scroll to Backlog section"
-              >
-                Backlog
-              </TaskListTitle>
+              {backlogItems.length > 0 ? (
+                <TaskListTitle
+                  ref={backlogSectionRef}
+                  onClick={onBacklogHeadingClick}
+                  title="Scroll to Backlog section"
+                >
+                  Backlog
+                </TaskListTitle>
+              ) : null}
               {backlogItems.map((item, index) => (
                 <TodoPersistedRow
                   key={item.id}
@@ -232,6 +246,14 @@ export function TodaysTodo() {
         />
       </Box>
     </Stack>
+  );
+}
+
+function TodaysTodoEmptyState() {
+  return (
+    <Text size="xs" c="dimmed" pt={4}>
+      No tasks
+    </Text>
   );
 }
 
