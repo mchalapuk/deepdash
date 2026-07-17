@@ -839,8 +839,12 @@ function elapsedCountdownMs(r: Snapshot<ActivePhaseRun>, now: number): number {
   return Math.max(0, now - r.phaseStartedAtMs - pauseWall);
 }
 
+/**
+ * Signed: negative once elapsed time has passed the deadline, so a paused work run still shows the
+ * same overtime it would while running (see {@link runEndWallMs}'s equivalent while not paused).
+ */
 function remainingCountdownMs(r: Snapshot<ActivePhaseRun>, now: number): number {
-  return Math.max(0, r.intendedDurationMs - elapsedCountdownMs(r, now));
+  return r.intendedDurationMs - elapsedCountdownMs(r, now);
 }
 
 /** Wall-clock instant when the countdown hits zero while running (no open pause). */
@@ -1052,6 +1056,11 @@ export function __getPomodoroDayLogEntriesForTests(): PomodoroLogEntryStored[] {
 
 export function __runMidnightSplitForTests(nowMs: number): void {
   maybeSplitActivePhaseAtLocalMidnight(nowMs);
+}
+
+/** @internal Mirrors what {@link useSecondsRemaining} shows for a paused run. */
+export function __remainingCountdownMsForTests(r: ActivePhaseRun, now: number): number {
+  return remainingCountdownMs(r, now);
 }
 
 function parsePauseSpan(x: unknown): PomodoroPauseSpan | null {

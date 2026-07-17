@@ -4,6 +4,7 @@ import {
   __getPomodoroActivePhaseRunForTests,
   __getPomodoroDayLogEntriesForTests,
   __injectPomodoroMinimalStateForTests,
+  __remainingCountdownMsForTests,
   __runPomodoroEngineTickForTests,
   __setPomodoroClockForTests,
   __setSleepDriftProviderForTests,
@@ -165,5 +166,34 @@ describe("runEngineTick", () => {
     expect(run).not.toBeNull();
     expect(run!.deadlineCrossedNotified).toBe(false);
     expect(run!.openPauseStartMs).toBe(nowMs - driftMs);
+  });
+
+  it("keeps showing overtime (not 00:00) after a sleep-drift pause spans the deadline", () => {
+    // Regression: closing the lid mid-overtime used to freeze the display at 00:00 until Resume
+    // recomputed against the live clock, because remainingCountdownMs clamped negative to 0.
+    const tStart = 1_000_000;
+    const overtimeMs = 45_000;
+    const deadlineMs = tStart + WORK_MS;
+    const nowMs = deadlineMs + overtimeMs;
+    const driftMs = 20_000; // sleep started before the deadline, tab woke up well after it
+    __setSleepDriftProviderForTests(() => driftMs);
+    __setPomodoroClockForTests(() => nowMs);
+    __injectPomodoroMinimalStateForTests({
+      hydrated: true,
+      dayKey: localDayKey(new Date(nowMs)),
+      dayLog: { entries: [] },
+      activePhaseRun: baseRun({ phaseStartedAtMs: tStart }),
+    });
+
+    __runPomodoroEngineTickForTests();
+
+    const run = __getPomodoroActivePhaseRunForTests();
+    expect(run!.openPauseStartMs).not.toBeNull();
+    // The retroactive pause lands `driftMs` before `nowMs`, so overtime-at-pause is less than
+    // overtimeMs by that same drift.
+    const overtimeAtPauseMs = overtimeMs - driftMs;
+    const remainingMs = __remainingCountdownMsForTests(run!, run!.openPauseStartMs!);
+    expect(remainingMs).toBeLessThan(0);
+    expect(Math.ceil(remainingMs / 1000)).toBe(-Math.ceil(overtimeAtPauseMs / 1000));
   });
 });
