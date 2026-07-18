@@ -9,7 +9,6 @@ import {
   Stack,
   Tabs,
   Tooltip,
-  useMatches,
 } from "@mantine/core";
 import {
   IconChevronDown,
@@ -104,10 +103,6 @@ function TabPanel({ phase, running }: { phase: PomodoroPhase, running: boolean }
 
 function Countdown({ running }: { running: boolean }) {
   const secondsRemaining = useFlipSecondsRemaining();
-  const [scale, my] = useMatches<[number, number]>({
-    base: [.7, -18],
-    md: [1, 0],
-  })
 
   /** Steppers visible only when no active phase */
   const showSteppers = !running;
@@ -122,10 +117,7 @@ function Countdown({ running }: { running: boolean }) {
       gap="xs"
       pb={2}
       w="100%"
-      my={my}
-      style={{
-        "transform": `scale(${scale})`
-      }}
+      className="pomodoro-countdown-scale"
     >
       <Box
         style={{ flexGrow: 1 }}

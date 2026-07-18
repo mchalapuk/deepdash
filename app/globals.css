@@ -33,3 +33,20 @@ body {
   max-width: 0.95em;
   text-indent: 0.185em;
 }
+
+/* Pomodoro countdown: scaled down by default (mobile), full size from Mantine's md
+   breakpoint up. Plain CSS so the correct size applies on first paint — a JS-computed
+   (useMatches) scale flashes/sticks at the mobile value until a client effect resolves it. */
+.pomodoro-countdown-scale {
+  transform: scale(0.7);
+  margin-top: -18px;
+  margin-bottom: -18px;
+}
+
+@media (min-width: 62em) {
+  .pomodoro-countdown-scale {
+    transform: scale(1);
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+}
