@@ -794,11 +794,11 @@ function isPausedWorkRunStale(
   return nowMs - r.openPauseStartMs > pausedWorkAbandonThresholdMs();
 }
 
-/** Drops a pomodoro paused past {@link pausedWorkAbandonThresholdMs} without logging it. */
+/** Auto-finalizes a pomodoro paused past {@link pausedWorkAbandonThresholdMs}, logging work done before the pause. */
 function abandonStalePausedWorkRunIfAny(nowMs: number): void {
   const r = pomodoroStore.activePhaseRun;
   if (!r || !isPausedWorkRunStale(r, nowMs)) return;
-  pomodoroStore.activePhaseRun = null;
+  finalizeActivePhaseWithEndedAt(nowMs);
 }
 
 /** @internal */

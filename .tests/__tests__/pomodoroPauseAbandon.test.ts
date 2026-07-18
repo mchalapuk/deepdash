@@ -87,6 +87,9 @@ describe("isPausedWorkRunStale", () => {
 });
 
 describe("abandonStalePausedWorkRunIfAny", () => {
+  // Same local day as the injected dayKey below, so finalizing stays on the synchronous same-day path.
+  const dayStartMs = new Date(2026, 6, 9, 10, 0, 0, 0).getTime();
+
   afterEach(() => {
     __injectPomodoroMinimalStateForTests({
       hydrated: false,
@@ -96,24 +99,33 @@ describe("abandonStalePausedWorkRunIfAny", () => {
     });
   });
 
-  it("drops a stale paused pomodoro without logging it, leaving a fresh unstarted session", () => {
-    const tPause = 10_000;
+  it("auto-finalizes a stale paused pomodoro into the worklog, logging work done before the pause", () => {
+    const tPause = dayStartMs + 10_000;
     __injectPomodoroMinimalStateForTests({
       hydrated: true,
       dayKey: "2026-07-09",
       dayLog: { entries: [] },
-      activePhaseRun: baseRun({ openPauseStartMs: tPause }),
+      activePhaseRun: baseRun({ phaseStartedAtMs: dayStartMs, openPauseStartMs: tPause }),
     });
 
-    __runPausedWorkAbandonCheckForTests(tPause + SHORT_BREAK_MS + 1);
+    const endedAtMs = tPause + SHORT_BREAK_MS + 1;
+    __runPausedWorkAbandonCheckForTests(endedAtMs);
 
     expect(__getPomodoroActivePhaseRunForTests()).toBeNull();
-    expect(__getPomodoroDayLogEntriesForTests()).toHaveLength(0);
+    const entries = __getPomodoroDayLogEntriesForTests();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      phase: "work",
+      startedAtMs: dayStartMs,
+      endedAtMs,
+      pauses: [{ startMs: tPause, endMs: endedAtMs }],
+      deletedAtMs: null,
+    });
   });
 
   it("leaves a paused pomodoro alone while still within the abandon threshold", () => {
-    const tPause = 10_000;
-    const run = baseRun({ openPauseStartMs: tPause });
+    const tPause = dayStartMs + 10_000;
+    const run = baseRun({ phaseStartedAtMs: dayStartMs, openPauseStartMs: tPause });
     __injectPomodoroMinimalStateForTests({
       hydrated: true,
       dayKey: "2026-07-09",
