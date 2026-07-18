@@ -259,6 +259,18 @@ export function useActiveRunningBreakEndsAtMs(): number | null {
   return runEndWallMs(r);
 }
 
+/**
+ * Wall-clock instant the active work run's deadline was (or will be) crossed; null when idle or on a
+ * break. Stays fixed for the run (accounting for pauses so far) so the repeating overtime chime can
+ * align to 5-minute marks past this instant instead of the moment a component happens to mount.
+ */
+export function useActivePhaseOvertimeDeadlineAtMs(): number | null {
+  const snap = useSnapshot(pomodoroStore);
+  const r = snap.activePhaseRun;
+  if (!r || r.phase !== "work") return null;
+  return flipClockEndsAtMsAt(snap, currentTimeMs());
+}
+
 type PomodoroSnap = {
   phase: PomodoroPhase;
   config: DurationSlice | Snapshot<DurationSlice>;

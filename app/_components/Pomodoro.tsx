@@ -27,6 +27,7 @@ import {
 import {
   pomodoroActions,
   useActivePhaseDeadlineCrossed,
+  useActivePhaseOvertimeDeadlineAtMs,
   useActiveRunningBreakEndsAtMs,
   useCurrentPhase,
   useCurrentPhaseExpired,
@@ -39,6 +40,8 @@ import { FlipTimer } from "./FlipTimer";
 
 const POMODORO_CHIME_MP3 = "/chime.mp3";
 const POMODORO_CHIME_REPEAT_MS = 5 * 60 * 1000;
+/** A mark this close to "now" still counts as due, so a live deadline crossing chimes right away. */
+const POMODORO_CHIME_GRACE_MS = 2000;
 
 export function Pomodoro() {
   const [phase, running, paused] = usePomodoroMechanics();
@@ -319,12 +322,7 @@ function usePomodoroMechanics(): [PomodoroPhase, boolean, boolean] {
 function usePomodoroSounds(): void {
   const chimeAudioRef = useRef<HTMLAudioElement | null>(null);
   const deadlineCrossed = useActivePhaseDeadlineCrossed();
-
-  // Track the previous value of `deadlineCrossed` so we only kick off the chime
-  // schedule on the false → true transition. Initializing with the current value
-  // avoids re-triggering the chime on first mount when the persisted state
-  // already has the deadline crossed.
-  const prevDeadlineCrossedRef = useRef(deadlineCrossed);
+  const overtimeDeadlineAtMs = useActivePhaseOvertimeDeadlineAtMs();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -344,9 +342,7 @@ function usePomodoroSounds(): void {
 
   useEffect(() => {
     const chimeEl = chimeAudioRef.current;
-    const justCrossed = deadlineCrossed && !prevDeadlineCrossedRef.current;
-    prevDeadlineCrossedRef.current = deadlineCrossed;
-    if (!chimeEl || !justCrossed) return;
+    if (!chimeEl || !deadlineCrossed || overtimeDeadlineAtMs == null) return;
 
     const playChime = (): void => {
       chimeEl.currentTime = 0;
@@ -355,12 +351,24 @@ function usePomodoroSounds(): void {
       });
     };
 
-    playChime();
-    const intervalId = window.setInterval(playChime, POMODORO_CHIME_REPEAT_MS);
+    // Align to 5-minute marks past the deadline rather than the moment this effect runs, so a page
+    // reload deep into overtime waits for the next mark instead of chiming immediately.
+    const overtimeMs = Math.max(0, Date.now() - overtimeDeadlineAtMs);
+    const msSinceLastMark = overtimeMs % POMODORO_CHIME_REPEAT_MS;
+    const initialDelayMs =
+      msSinceLastMark <= POMODORO_CHIME_GRACE_MS ? 0 : POMODORO_CHIME_REPEAT_MS - msSinceLastMark;
+
+    let intervalId: number | undefined;
+    const timeoutId = window.setTimeout(() => {
+      playChime();
+      intervalId = window.setInterval(playChime, POMODORO_CHIME_REPEAT_MS);
+    }, initialDelayMs);
+
     return () => {
-      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
+      if (intervalId != null) window.clearInterval(intervalId);
     };
-  }, [deadlineCrossed]);
+  }, [deadlineCrossed, overtimeDeadlineAtMs]);
 }
 
 /**
