@@ -323,6 +323,7 @@ function usePomodoroSounds(): void {
   const chimeAudioRef = useRef<HTMLAudioElement | null>(null);
   const deadlineCrossed = useActivePhaseDeadlineCrossed();
   const overtimeDeadlineAtMs = useActivePhaseOvertimeDeadlineAtMs();
+  const paused = useIsPaused();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -342,7 +343,9 @@ function usePomodoroSounds(): void {
 
   useEffect(() => {
     const chimeEl = chimeAudioRef.current;
-    if (!chimeEl || !deadlineCrossed || overtimeDeadlineAtMs == null) return;
+    // Paused work stops the repeating chime too: overtimeDeadlineAtMs stays frozen while paused, so
+    // resuming later re-runs this effect and realigns to a 5-minute mark past the (now shifted) deadline.
+    if (!chimeEl || !deadlineCrossed || overtimeDeadlineAtMs == null || paused) return;
 
     const playChime = (): void => {
       chimeEl.currentTime = 0;
@@ -368,7 +371,7 @@ function usePomodoroSounds(): void {
       window.clearTimeout(timeoutId);
       if (intervalId != null) window.clearInterval(intervalId);
     };
-  }, [deadlineCrossed, overtimeDeadlineAtMs]);
+  }, [deadlineCrossed, overtimeDeadlineAtMs, paused]);
 }
 
 /**
