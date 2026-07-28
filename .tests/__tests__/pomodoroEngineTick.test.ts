@@ -3,6 +3,7 @@
 import {
   __getPomodoroActivePhaseRunForTests,
   __getPomodoroDayLogEntriesForTests,
+  __getPomodoroPhaseForTests,
   __injectPomodoroMinimalStateForTests,
   __remainingCountdownMsForTests,
   __runPomodoroEngineTickForTests,
@@ -34,6 +35,7 @@ describe("runEngineTick", () => {
     __injectPomodoroMinimalStateForTests({
       hydrated: false,
       dayKey: "",
+      phase: "work",
       activePhaseRun: null,
       dayLog: { entries: [] },
     });
@@ -166,6 +168,43 @@ describe("runEngineTick", () => {
     expect(run).not.toBeNull();
     expect(run!.deadlineCrossedNotified).toBe(false);
     expect(run!.openPauseStartMs).toBe(nowMs - driftMs);
+  });
+
+  it("completes a break whose sleep-drift pause outlasted the countdown, without chiming", () => {
+    // Regression: closing the lid mid-break left the break paused at 00:00 after waking up; the
+    // break only completed (chiming, then resetting to work) on the next Resume.
+    const tStart = 1_000_000;
+    const lidCloseMs = tStart + 60_000; // one minute into a five-minute break
+    const sleptMs = 60 * 60 * 1000;
+    const nowMs = lidCloseMs + sleptMs;
+    __setSleepDriftProviderForTests(() => sleptMs);
+    __setPomodoroClockForTests(() => nowMs);
+    __injectPomodoroMinimalStateForTests({
+      hydrated: true,
+      dayKey: localDayKey(new Date(nowMs)),
+      phase: "shortBreak",
+      dayLog: { entries: [] },
+      activePhaseRun: baseRun({
+        phase: "shortBreak",
+        phaseStartedAtMs: tStart,
+        intendedDurationMs: SHORT_BREAK_MS,
+      }),
+    });
+
+    const onBreakPhaseCompleted = jest.fn();
+    __runPomodoroEngineTickForTests({ onBreakPhaseCompleted });
+
+    expect(onBreakPhaseCompleted).not.toHaveBeenCalled();
+    expect(__getPomodoroActivePhaseRunForTests()).toBeNull();
+    expect(__getPomodoroPhaseForTests()).toBe("work");
+    const entries = __getPomodoroDayLogEntriesForTests();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      phase: "shortBreak",
+      startedAtMs: tStart,
+      endedAtMs: tStart + SHORT_BREAK_MS,
+      pauses: [{ startMs: lidCloseMs, endMs: tStart + SHORT_BREAK_MS }],
+    });
   });
 
   it("keeps showing overtime (not 00:00) after a sleep-drift pause spans the deadline", () => {

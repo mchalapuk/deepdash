@@ -529,6 +529,7 @@ function runEngineTick(
 
   maybeSplitActivePhaseAtLocalMidnight(nowMs);
   abandonStalePausedWorkRunIfAny(nowMs);
+  completeExpiredPausedBreakRunIfAny(nowMs);
 
   const r = pomodoroStore.activePhaseRun;
   const running = isRunning(r);
@@ -813,6 +814,26 @@ function abandonStalePausedWorkRunIfAny(nowMs: number): void {
   finalizeActivePhaseWithEndedAt(nowMs);
 }
 
+/**
+ * A paused break whose countdown would have run out during the pause is over: the pause itself was
+ * the break (typically a lid-close sleep pause backdated by {@link pauseRetroactivelyAt}). Finalizes
+ * it at the instant it would have ended and drops into idle work — silently, without
+ * `onBreakPhaseCompleted`, since the completion is in the past and a chime now would only startle.
+ * Without this, the break stays paused at 00:00 and only completes (chiming) on the next Resume.
+ */
+function completeExpiredPausedBreakRunIfAny(nowMs: number): void {
+  const r = pomodoroStore.activePhaseRun;
+  if (!r || r.phase === "work" || r.openPauseStartMs == null) return;
+
+  /* Paused runs freeze their deadline at the pause anchor, so this is the would-have-ended instant. */
+  const wouldEndAtMs = flipClockEndsAtMsAt(pomodoroStore, nowMs);
+  if (nowMs < wouldEndAtMs) return;
+
+  // Never end before the pause started (a run paused past its deadline would compute a past instant).
+  finalizeActivePhaseWithEndedAt(Math.max(wouldEndAtMs, r.openPauseStartMs));
+  applyPhaseWithFullDuration("work");
+}
+
 /** @internal */
 export function __isPausedWorkRunStaleForTests(
   r: ActivePhaseRun,
@@ -824,6 +845,11 @@ export function __isPausedWorkRunStaleForTests(
 /** @internal */
 export function __runPausedWorkAbandonCheckForTests(nowMs: number): void {
   abandonStalePausedWorkRunIfAny(nowMs);
+}
+
+/** @internal */
+export function __runExpiredPausedBreakCheckForTests(nowMs: number): void {
+  completeExpiredPausedBreakRunIfAny(nowMs);
 }
 
 // --- time-related helpers ---
@@ -1049,10 +1075,12 @@ export function __runPomodoroEngineTickForTests(options?: PomodoroInitOptions): 
 export function __injectPomodoroMinimalStateForTests(patch: {
   hydrated?: boolean;
   dayKey?: string;
+  phase?: PomodoroPhase;
   activePhaseRun?: ActivePhaseRun | null;
   dayLog?: PomodoroDayLogStored;
 }): void {
   if (patch.hydrated !== undefined) pomodoroStore.hydrated = patch.hydrated;
+  if (patch.phase !== undefined) pomodoroStore.phase = patch.phase;
   if (patch.dayKey !== undefined) pomodoroStore.dayKey = patch.dayKey;
   if (patch.activePhaseRun !== undefined) pomodoroStore.activePhaseRun = patch.activePhaseRun;
   if (patch.dayLog !== undefined) pomodoroStore.dayLog = patch.dayLog;
@@ -1060,6 +1088,10 @@ export function __injectPomodoroMinimalStateForTests(patch: {
 
 export function __getPomodoroActivePhaseRunForTests(): ActivePhaseRun | null {
   return pomodoroStore.activePhaseRun;
+}
+
+export function __getPomodoroPhaseForTests(): PomodoroPhase {
+  return pomodoroStore.phase;
 }
 
 export function __getPomodoroDayLogEntriesForTests(): PomodoroLogEntryStored[] {

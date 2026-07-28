@@ -3,8 +3,10 @@
 import {
   __getPomodoroActivePhaseRunForTests,
   __getPomodoroDayLogEntriesForTests,
+  __getPomodoroPhaseForTests,
   __injectPomodoroMinimalStateForTests,
   __isPausedWorkRunStaleForTests,
+  __runExpiredPausedBreakCheckForTests,
   __runPausedWorkAbandonCheckForTests,
   type ActivePhaseRun,
   type PomodoroLogEntryStored,
@@ -134,6 +136,85 @@ describe("abandonStalePausedWorkRunIfAny", () => {
     });
 
     __runPausedWorkAbandonCheckForTests(tPause + SHORT_BREAK_MS - 1);
+
+    expect(__getPomodoroActivePhaseRunForTests()).toEqual(run);
+  });
+});
+
+describe("completeExpiredPausedBreakRunIfAny", () => {
+  // Same local day as the injected dayKey below, so finalizing stays on the synchronous same-day path.
+  const dayStartMs = new Date(2026, 6, 9, 10, 0, 0, 0).getTime();
+
+  function pausedBreak(elapsedBeforePauseMs: number): ActivePhaseRun {
+    return baseRun({
+      phase: "shortBreak",
+      phaseStartedAtMs: dayStartMs,
+      intendedDurationMs: SHORT_BREAK_MS,
+      openPauseStartMs: dayStartMs + elapsedBeforePauseMs,
+    });
+  }
+
+  beforeEach(() => {
+    __injectPomodoroMinimalStateForTests({ hydrated: true, dayKey: "2026-07-09", phase: "shortBreak" });
+  });
+
+  afterEach(() => {
+    __injectPomodoroMinimalStateForTests({
+      hydrated: false,
+      dayKey: "",
+      phase: "work",
+      activePhaseRun: null,
+      dayLog: { entries: [] },
+    });
+  });
+
+  it("completes a paused break at its would-be end and drops into idle work", () => {
+    const elapsedMs = 60_000;
+    __injectPomodoroMinimalStateForTests({ dayLog: { entries: [] }, activePhaseRun: pausedBreak(elapsedMs) });
+
+    __runExpiredPausedBreakCheckForTests(dayStartMs + 60 * 60 * 1000);
+
+    expect(__getPomodoroActivePhaseRunForTests()).toBeNull();
+    expect(__getPomodoroPhaseForTests()).toBe("work");
+    const entries = __getPomodoroDayLogEntriesForTests();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      phase: "shortBreak",
+      startedAtMs: dayStartMs,
+      endedAtMs: dayStartMs + SHORT_BREAK_MS,
+    });
+  });
+
+  it("leaves a paused break alone while the pause is shorter than the time it had left", () => {
+    const elapsedMs = 60_000;
+    const run = pausedBreak(elapsedMs);
+    __injectPomodoroMinimalStateForTests({ dayLog: { entries: [] }, activePhaseRun: run });
+
+    __runExpiredPausedBreakCheckForTests(dayStartMs + elapsedMs + (SHORT_BREAK_MS - elapsedMs) - 1);
+
+    expect(__getPomodoroActivePhaseRunForTests()).toEqual(run);
+    expect(__getPomodoroPhaseForTests()).toBe("shortBreak");
+  });
+
+  it("leaves a paused pomodoro alone (work keeps counting up into overtime)", () => {
+    const run = baseRun({ phaseStartedAtMs: dayStartMs, openPauseStartMs: dayStartMs + 60_000 });
+    __injectPomodoroMinimalStateForTests({ phase: "work", dayLog: { entries: [] }, activePhaseRun: run });
+
+    __runExpiredPausedBreakCheckForTests(dayStartMs + 24 * 60 * 60 * 1000);
+
+    expect(__getPomodoroActivePhaseRunForTests()).toEqual(run);
+  });
+
+  it("leaves a running break alone", () => {
+    const run = baseRun({
+      phase: "shortBreak",
+      phaseStartedAtMs: dayStartMs,
+      intendedDurationMs: SHORT_BREAK_MS,
+      openPauseStartMs: null,
+    });
+    __injectPomodoroMinimalStateForTests({ dayLog: { entries: [] }, activePhaseRun: run });
+
+    __runExpiredPausedBreakCheckForTests(dayStartMs + SHORT_BREAK_MS + 1);
 
     expect(__getPomodoroActivePhaseRunForTests()).toEqual(run);
   });
