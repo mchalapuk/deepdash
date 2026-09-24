@@ -42,6 +42,16 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       .catch((err: unknown) => log.warn("SW register failed", err));
   }, []);
 
+  /** Opt out of best-effort eviction so the browser won't drop localStorage/IndexedDB under disk pressure. */
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.storage?.persist) return;
+    void navigator.storage
+      .persisted()
+      .then((already) => already || navigator.storage.persist())
+      .then((granted) => { if (!granted) log.warn("Persistent storage not granted"); })
+      .catch((err: unknown) => log.warn("storage.persist failed", err));
+  }, []);
+
   return (
     <MantineProvider defaultColorScheme="auto" theme={theme}>
       <Notifications position="bottom-right" zIndex={400} />
